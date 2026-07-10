@@ -1,6 +1,7 @@
 import { Canvas, type FabricImage, type FabricObject } from "fabric"
 
 import type { AssetRecord, AssetRegistry } from "./asset-registry"
+import { clampAssetCenter, type LayerPlacementRequest } from "./drag-placement"
 import type {
   CanvasSize,
   EditorDocument,
@@ -82,7 +83,11 @@ export class FabricRuntime {
     return size
   }
 
-  async addLayer(record: AssetRecord, id: LayerId, size: CanvasSize): Promise<boolean> {
+  async addLayer(
+    record: AssetRecord,
+    id: LayerId,
+    { canvasSize: size, center }: LayerPlacementRequest,
+  ): Promise<boolean> {
     const image = await loadFabricImage(record)
     if (image.width <= 0 || image.height <= 0) return false
 
@@ -91,11 +96,17 @@ export class FabricRuntime {
       (size.height * 0.52) / image.height,
       1,
     )
+    const placement = clampAssetCenter(
+      center ?? { x: size.width / 2, y: size.height / 2 },
+      { width: image.width * scale, height: image.height * scale },
+      size,
+    )
+    if (placement.kind === "invalid") return false
     configureFabricImage(
       image,
       {
-        x: size.width / 2,
-        y: size.height / 2,
+        x: placement.point.x,
+        y: placement.point.y,
         scaleX: scale,
         scaleY: scale,
         angle: 0,

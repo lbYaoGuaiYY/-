@@ -1,4 +1,6 @@
-import type { AssetId, CanvasSize } from "./editor-model"
+import { type AssetId, AssetIdSchema, type CanvasSize } from "./editor-model"
+
+export const EDITOR_CANVAS_DROP_ID = "editor-canvas-drop" as const
 
 export type ClientPoint = {
   readonly x: number
@@ -20,6 +22,11 @@ export type AssetDragPayload = {
   readonly assetId: AssetId
 }
 
+export type LayerPlacementRequest = {
+  readonly canvasSize: CanvasSize
+  readonly center: ClientPoint | null
+}
+
 export type PlacementResult =
   | { readonly kind: "valid"; readonly point: ClientPoint }
   | {
@@ -29,6 +36,15 @@ export type PlacementResult =
 
 export function createAssetDragPayload(assetId: AssetId): AssetDragPayload {
   return { kind: "asset", assetId }
+}
+
+export function parseAssetDragPayload(value: unknown): AssetDragPayload | null {
+  if (typeof value !== "object" || value === null || !("kind" in value) || !("assetId" in value)) {
+    return null
+  }
+  if (value.kind !== "asset") return null
+  const assetId = AssetIdSchema.safeParse(value.assetId)
+  return assetId.success ? { kind: "asset", assetId: assetId.data } : null
 }
 
 export function clientPointToLogicalCanvasPoint(

@@ -138,6 +138,15 @@
 .asset-tile {
   position: relative;
   width: 100%;
+  transition:
+    border-color 120ms ease-out,
+    opacity 120ms ease-out;
+}
+
+.asset-tile.is-dragging {
+  border-color: var(--accent-primary);
+  cursor: grabbing;
+  opacity: 0.45;
 }
 
 .asset-tile__preview {
@@ -177,6 +186,16 @@
   border-radius: var(--radius-control);
   background: var(--surface-app);
   color: var(--text-primary);
+}
+
+.asset-drag-overlay {
+  width: 128px;
+  overflow: hidden;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+  pointer-events: none;
 }
 
 .asset-panel__empty {

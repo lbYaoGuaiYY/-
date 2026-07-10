@@ -2,6 +2,7 @@ import type { DemoAsset } from "../assets/demo-assets"
 import { captureProjectSnapshot, registerProjectAssets } from "../projects/editor-project-assets"
 import type { ProjectSnapshot } from "../projects/project-format"
 import { type AssetRecord, AssetRegistry } from "./asset-registry"
+import type { ClientPoint } from "./drag-placement"
 import {
   createLayerId,
   type EditorDocument,
@@ -9,6 +10,7 @@ import {
   type LayerId,
   type LayerTransform,
 } from "./editor-model"
+import type { EditorViewState } from "./editor-view-state"
 import { FabricRuntime, type LayerDirection } from "./fabric-runtime"
 import {
   canRedo,
@@ -20,16 +22,6 @@ import {
   undoHistory,
 } from "./history-store"
 import { imageResultMessage, validateImageFile } from "./image-import"
-
-export type EditorViewState = {
-  readonly document: EditorDocument
-  readonly selectedLayerId: LayerId | null
-  readonly canUndo: boolean
-  readonly canRedo: boolean
-  readonly isBusy: boolean
-  readonly errorMessage: string | null
-  readonly zoomPercent: number
-}
 
 export class EditorController {
   private readonly runtime: FabricRuntime
@@ -109,8 +101,8 @@ export class EditorController {
     })
   }
 
-  async addBuiltInAsset(asset: DemoAsset): Promise<void> {
-    await this.runBusy(() => this.addRecord(this.assets.registerBuiltIn(asset)))
+  async addBuiltInAsset(asset: DemoAsset, center: ClientPoint | null = null): Promise<void> {
+    await this.runBusy(() => this.addRecord(this.assets.registerBuiltIn(asset), center))
   }
 
   async addLocalAssets(files: readonly File[]): Promise<void> {
@@ -197,9 +189,12 @@ export class EditorController {
     this.listeners.clear()
   }
 
-  private async addRecord(record: AssetRecord): Promise<void> {
+  private async addRecord(record: AssetRecord, center: ClientPoint | null = null): Promise<void> {
     const id = createLayerId(crypto.randomUUID())
-    const added = await this.runtime.addLayer(record, id, this.history.present.canvasSize)
+    const added = await this.runtime.addLayer(record, id, {
+      canvasSize: this.history.present.canvasSize,
+      center,
+    })
     if (added) this.commitRuntimeLayers()
     else this.setError("素材无法读取，请确认文件没有损坏")
   }

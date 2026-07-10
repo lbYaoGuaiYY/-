@@ -1,6 +1,8 @@
+import { useDroppable } from "@dnd-kit/core"
 import { ImageSquare, UploadSimple } from "@phosphor-icons/react"
 import { useEffect, useRef } from "react"
 
+import { EDITOR_CANVAS_DROP_ID } from "./drag-placement"
 import { EditorController } from "./editor-controller"
 
 export type EditorCanvasProps = {
@@ -16,6 +18,7 @@ export function EditorCanvas({
 }: EditorCanvasProps) {
   const stageRef = useRef<HTMLElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasDrop = useDroppable({ id: EDITOR_CANVAS_DROP_ID, disabled: !backgroundLoaded })
 
   useEffect(() => {
     const canvasElement = canvasRef.current
@@ -42,12 +45,12 @@ export function EditorCanvas({
   return (
     <section
       ref={stageRef}
-      className="stage"
+      className={`stage${canvasDrop.isOver ? " is-drop-target" : ""}`}
       data-testid="editor-canvas"
       data-background-loaded={backgroundLoaded}
       aria-label="设计画布工作区"
     >
-      <div className="canvas-host">
+      <div ref={canvasDrop.setNodeRef} className="canvas-host">
         <canvas ref={canvasRef} aria-label="设计画布" role="img" />
       </div>
       {!backgroundLoaded && (

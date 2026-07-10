@@ -118,6 +118,11 @@
   flex: none;
   border: 1px solid var(--border-strong);
   background: var(--canvas-white);
+  transition: border-color 120ms ease-out;
+}
+
+.stage.is-drop-target .canvas-host {
+  border-color: var(--accent-primary);
 }
 
 .canvas-host canvas {

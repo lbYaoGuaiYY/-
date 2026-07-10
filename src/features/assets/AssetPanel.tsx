@@ -1,6 +1,7 @@
-import { MagnifyingGlass, Plus, UploadSimple } from "@phosphor-icons/react"
+import { MagnifyingGlass, UploadSimple } from "@phosphor-icons/react"
 import type { ChangeEvent } from "react"
 import { useId, useRef, useState } from "react"
+import { DraggableAssetTile } from "./DraggableAssetTile"
 import type { DemoAsset } from "./demo-assets"
 import { DEMO_ASSETS } from "./demo-assets"
 
@@ -77,23 +78,7 @@ export function AssetPanel({ onAddAsset, onImportFiles }: AssetPanelProps) {
         <ul className="asset-panel__grid" aria-label="内置素材">
           {visibleAssets.map((asset) => (
             <li key={asset.id}>
-              <button
-                className="asset-tile"
-                data-testid={`asset-card-${asset.id}`}
-                type="button"
-                title={`添加${asset.name}`}
-                aria-label={`添加素材：${asset.name}`}
-                onClick={() => onAddAsset(asset)}
-              >
-                <span className="asset-tile__preview">
-                  <img src={asset.src} alt="" draggable={false} />
-                </span>
-                <span className="asset-tile__details">
-                  <span className="asset-tile__name">{asset.name}</span>
-                  <span className="asset-tile__category">{asset.category}</span>
-                </span>
-                <Plus className="asset-tile__add-icon" aria-hidden="true" size={16} weight="bold" />
-              </button>
+              <DraggableAssetTile asset={asset} onAdd={onAddAsset} />
             </li>
           ))}
         </ul>

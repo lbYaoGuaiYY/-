@@ -6,8 +6,10 @@ import { AssetPanel } from "./features/assets/AssetPanel"
 import type { DemoAsset } from "./features/assets/demo-assets"
 import { AppHeader } from "./features/editor/AppHeader"
 import { EditorCanvas } from "./features/editor/EditorCanvas"
+import { EditorDragContext } from "./features/editor/EditorDragContext"
 import { EditorToolbar } from "./features/editor/EditorToolbar"
-import type { EditorController, EditorViewState } from "./features/editor/editor-controller"
+import type { EditorController } from "./features/editor/editor-controller"
+import type { EditorViewState } from "./features/editor/editor-view-state"
 import { InspectorPanel } from "./features/editor/InspectorPanel"
 import { LayerPanel } from "./features/editor/LayerPanel"
 import {
@@ -119,43 +121,50 @@ export function App() {
         onRedo={() => void controller?.redo()}
         onExport={() => void controller?.downloadPng()}
       />
-      <div className={`workspace${assetPanelOpen ? "" : " assets-closed"}`}>
-        <div className={`side-panel side-panel-left${assetPanelOpen ? " is-open" : ""}`}>
-          <AssetPanel
-            onAddAsset={addBuiltInAsset}
-            onImportFiles={(files) => void controller?.addLocalAssets(files)}
-          />
+      <EditorDragContext
+        backgroundLoaded={backgroundLoaded}
+        canvasSize={view.document.canvasSize}
+        controller={controller}
+        onRequestBackground={requestBackground}
+      >
+        <div className={`workspace${assetPanelOpen ? "" : " assets-closed"}`}>
+          <div className={`side-panel side-panel-left${assetPanelOpen ? " is-open" : ""}`}>
+            <AssetPanel
+              onAddAsset={addBuiltInAsset}
+              onImportFiles={(files) => void controller?.addLocalAssets(files)}
+            />
+          </div>
+          <section className="canvas-column" aria-label="编辑区">
+            <EditorToolbar
+              hasSelection={view.selectedLayerId !== null}
+              onToggleAssets={() => setAssetPanelOpen((open) => !open)}
+              onMoveLayer={(direction) => controller?.moveSelection(direction)}
+              onDelete={() => controller?.deleteSelection()}
+            />
+            <EditorCanvas
+              backgroundLoaded={backgroundLoaded}
+              onReady={handleEditorReady}
+              onRequestBackground={requestBackground}
+            />
+          </section>
+          <aside
+            className={`side-panel side-panel-right${inspectorPanelOpen ? " is-open" : ""}`}
+            aria-label="属性与图层"
+          >
+            <InspectorPanel
+              layer={selectedLayer}
+              onClose={() => setInspectorPanelOpen(false)}
+              onUpdate={(transform) => controller?.updateSelection(transform)}
+            />
+            <LayerPanel
+              layers={view.document.layers}
+              selectedLayerId={view.selectedLayerId}
+              onClose={() => setInspectorPanelOpen(false)}
+              onSelect={(id) => controller?.selectLayer(id)}
+            />
+          </aside>
         </div>
-        <section className="canvas-column" aria-label="编辑区">
-          <EditorToolbar
-            hasSelection={view.selectedLayerId !== null}
-            onToggleAssets={() => setAssetPanelOpen((open) => !open)}
-            onMoveLayer={(direction) => controller?.moveSelection(direction)}
-            onDelete={() => controller?.deleteSelection()}
-          />
-          <EditorCanvas
-            backgroundLoaded={backgroundLoaded}
-            onReady={handleEditorReady}
-            onRequestBackground={requestBackground}
-          />
-        </section>
-        <aside
-          className={`side-panel side-panel-right${inspectorPanelOpen ? " is-open" : ""}`}
-          aria-label="属性与图层"
-        >
-          <InspectorPanel
-            layer={selectedLayer}
-            onClose={() => setInspectorPanelOpen(false)}
-            onUpdate={(transform) => controller?.updateSelection(transform)}
-          />
-          <LayerPanel
-            layers={view.document.layers}
-            selectedLayerId={view.selectedLayerId}
-            onClose={() => setInspectorPanelOpen(false)}
-            onSelect={(id) => controller?.selectLayer(id)}
-          />
-        </aside>
-      </div>
+      </EditorDragContext>
       {view.errorMessage !== null && (
         <div className="error-banner" role="alert">
           <span>{view.errorMessage}</span>
