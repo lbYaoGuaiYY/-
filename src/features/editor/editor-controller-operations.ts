@@ -9,6 +9,31 @@ import {
   INITIAL_EDITOR_DOCUMENT,
 } from "./editor-model"
 import type { FabricRuntime } from "./fabric-runtime"
+import { type ImageFileResult, validateImageFile } from "./image-import"
+
+export type BackgroundImportResult =
+  | { readonly kind: "loaded"; readonly assetId: AssetRecord["id"]; readonly size: CanvasSize }
+  | { readonly kind: "invalid"; readonly reason: ImageFileResult["kind"] }
+  | { readonly kind: "failed" }
+
+export async function importRuntimeBackground(
+  runtime: FabricRuntime,
+  assets: AssetRegistry,
+  file: File,
+): Promise<BackgroundImportResult> {
+  const validation = await validateImageFile(file)
+  if (validation.kind !== "valid") return { kind: "invalid", reason: validation.kind }
+  const record = assets.registerFile(file)
+  try {
+    const size = await runtime.importBackground(record)
+    if (size !== null) return { kind: "loaded", assetId: record.id, size }
+  } catch {
+    assets.discard(record.id)
+    return { kind: "failed" }
+  }
+  assets.discard(record.id)
+  return { kind: "failed" }
+}
 
 export async function restoreRuntimeProject(
   runtime: FabricRuntime,

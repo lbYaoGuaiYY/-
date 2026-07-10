@@ -1,11 +1,12 @@
 import type { DemoAsset } from "../assets/demo-assets"
-import { captureProjectSnapshot } from "../projects/editor-project-assets"
+import { captureProjectSnapshot as captureSnapshot } from "../projects/editor-project-assets"
 import type { ProjectSnapshot } from "../projects/project-format"
 import { type AssetRecord, AssetRegistry } from "./asset-registry"
 import type { ClientPoint } from "./drag-placement"
 import {
   addRuntimeLayer,
   downloadRuntimePng,
+  importRuntimeBackground,
   restoreRuntimeProject,
 } from "./editor-controller-operations"
 import {
@@ -54,8 +55,7 @@ export class EditorController {
 
   getSnapshot = (): EditorViewState => this.state
 
-  captureProject = (): ProjectSnapshot | null =>
-    captureProjectSnapshot(this.history.present, this.assets)
+  captureProject = (): ProjectSnapshot | null => captureSnapshot(this.history.present, this.assets)
 
   getAssetSource = (id: AssetId): string | undefined => this.assets.get(id)?.src
 
@@ -83,20 +83,16 @@ export class EditorController {
   }
 
   async importBackground(file: File): Promise<void> {
-    const validation = validateImageFile(file)
-    if (validation.kind !== "valid") {
-      this.setError(imageResultMessage(validation.kind))
-      return
-    }
-
     await this.runBusy(async () => {
-      const record = this.assets.registerFile(file)
-      const size = await this.runtime.importBackground(record)
-      if (size === null) {
-        this.setError("图片无法读取，请确认文件没有损坏")
-        return
-      }
-      this.commit({ ...this.history.present, canvasSize: size, backgroundAssetId: record.id })
+      const result = await importRuntimeBackground(this.runtime, this.assets, file)
+      if (result.kind === "invalid") this.setError(imageResultMessage(result.reason))
+      else if (result.kind === "failed") this.setError("图片无法读取，请确认文件没有损坏")
+      else
+        this.commit({
+          ...this.history.present,
+          canvasSize: result.size,
+          backgroundAssetId: result.assetId,
+        })
     })
   }
 
@@ -107,7 +103,7 @@ export class EditorController {
   async addLocalAssets(files: readonly File[]): Promise<void> {
     await this.runBusy(async () => {
       for (const file of files) {
-        const validation = validateImageFile(file)
+        const validation = await validateImageFile(file)
         if (validation.kind === "valid") {
           await this.addRecord(this.assets.registerFile(file))
         } else {
@@ -212,7 +208,10 @@ export class EditorController {
       center,
     )
     if (added) this.commitRuntimeLayers()
-    else this.setError("素材无法读取，请确认文件没有损坏")
+    else {
+      this.assets.discard(record.id)
+      this.setError("素材无法读取，请确认文件没有损坏")
+    }
   }
 
   private commitRuntimeLayers(): void {

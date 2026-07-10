@@ -73,6 +73,13 @@ export class AssetRegistry {
     return this.records.get(id)?.localAsset ?? undefined
   }
 
+  discard(id: AssetId): void {
+    const record = this.records.get(id)
+    if (record === undefined) return
+    if (record.revokeOnDispose) URL.revokeObjectURL(record.src)
+    this.records.delete(id)
+  }
+
   dispose(): void {
     for (const record of this.records.values()) {
       if (record.revokeOnDispose) {
