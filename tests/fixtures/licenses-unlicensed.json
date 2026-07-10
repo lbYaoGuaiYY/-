@@ -1,0 +1,9 @@
+{
+  "UNLICENSED": [
+    {
+      "name": "blocked-package",
+      "versions": ["1.0.0"],
+      "license": "UNLICENSED"
+    }
+  ]
+}
