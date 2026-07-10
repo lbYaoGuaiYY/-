@@ -47,6 +47,13 @@ export function AppHeader({
         >
           {projectStatusLabel(projectStatus)}
         </span>
+        {projectStatus.kind === "saved" && projectStatus.durability !== "persistent" && (
+          <span className="project-durability-warning" role="note">
+            {projectStatus.durability === "best_effort"
+              ? "浏览器可能清理本地数据"
+              : "当前浏览器不支持持久存储"}
+          </span>
+        )}
       </div>
       <div className="header-actions">
         <button
@@ -101,7 +108,11 @@ function projectStatusLabel(status: ProjectSessionStatus): string {
     case "saved":
       return "已自动保存"
     case "save_failed":
-      return "保存失败"
+      return status.reason === "quota_exceeded" ? "本地空间不足" : "保存失败"
+    case "storage_blocked":
+      return "保存被其他窗口阻止"
+    case "reload_required":
+      return "请刷新后继续保存"
     case "restore_failed":
       return "恢复失败"
   }

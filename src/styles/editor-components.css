@@ -31,8 +31,16 @@
 }
 
 .project-save-status[data-kind="save_failed"],
-.project-save-status[data-kind="restore_failed"] {
+.project-save-status[data-kind="restore_failed"],
+.project-save-status[data-kind="storage_blocked"],
+.project-save-status[data-kind="reload_required"] {
   color: var(--status-error);
+}
+
+.project-durability-warning {
+  color: var(--status-warning);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .header-divider {

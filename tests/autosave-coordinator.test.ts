@@ -13,7 +13,7 @@ describe("AutosaveCoordinator", () => {
     vi.useFakeTimers()
     const coordinator = new AutosaveCoordinator<Snapshot>({
       delayMs: 600,
-      save: async () => ({ kind: "saved" }),
+      save: async () => ({ kind: "saved", durability: "persistent" }),
     })
 
     coordinator.schedule({ revision: 1 })
@@ -23,7 +23,7 @@ describe("AutosaveCoordinator", () => {
 
   it("debounces changes for 600ms", async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async () => ({ kind: "saved" }) as const)
+    const save = vi.fn(async () => ({ kind: "saved", durability: "persistent" }) as const)
     const coordinator = new AutosaveCoordinator<Snapshot>({ delayMs: 600, save })
 
     coordinator.schedule({ revision: 1 })
@@ -46,7 +46,7 @@ describe("AutosaveCoordinator", () => {
           finishFirst = resolve
         })
       }
-      return { kind: "saved" } as const
+      return { kind: "saved", durability: "persistent" } as const
     })
     const coordinator = new AutosaveCoordinator<Snapshot>({ delayMs: 600, save })
 
@@ -73,6 +73,10 @@ describe("AutosaveCoordinator", () => {
     await coordinator.flush()
 
     expect(statuses).toEqual(["saving", "failed"])
-    expect(coordinator.getStatus()).toEqual({ kind: "failed", retryable: true })
+    expect(coordinator.getStatus()).toEqual({
+      kind: "failed",
+      retryable: true,
+      reason: "quota_exceeded",
+    })
   })
 })

@@ -1,10 +1,12 @@
-import type { SaveProjectResult } from "./project-store"
+import type { SaveProjectResult, StorageDurability } from "./project-store"
+
+export type AutosaveFailure = Exclude<SaveProjectResult["kind"], "saved">
 
 export type AutosaveStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "saving" }
-  | { readonly kind: "saved" }
-  | { readonly kind: "failed"; readonly retryable: boolean }
+  | { readonly kind: "saved"; readonly durability: StorageDurability }
+  | { readonly kind: "failed"; readonly retryable: boolean; readonly reason: AutosaveFailure }
 
 export type AutosaveCoordinatorOptions<T> = {
   readonly delayMs: number
@@ -72,14 +74,18 @@ export class AutosaveCoordinator<T> {
         const result = await this.saveSnapshot(snapshot)
         this.updateStatus(
           result.kind === "saved"
-            ? { kind: "saved" }
-            : { kind: "failed", retryable: result.kind === "quota_exceeded" },
+            ? { kind: "saved", durability: result.durability }
+            : {
+                kind: "failed",
+                retryable: result.kind === "quota_exceeded" || result.kind === "error",
+                reason: result.kind,
+              },
         )
       } catch (error) {
         if (error instanceof Error) {
-          this.updateStatus({ kind: "failed", retryable: true })
+          this.updateStatus({ kind: "failed", retryable: true, reason: "error" })
         } else {
-          this.updateStatus({ kind: "failed", retryable: false })
+          this.updateStatus({ kind: "failed", retryable: false, reason: "error" })
         }
       }
     }

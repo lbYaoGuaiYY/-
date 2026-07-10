@@ -42,7 +42,7 @@ export function App() {
   )
   const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false)
   const backgroundInputRef = useRef<HTMLInputElement>(null)
-  const projectStatus = useProjectSession(controller)
+  const projectSession = useProjectSession(controller)
 
   const handleEditorReady = useCallback((nextController: EditorController | null) => {
     setController(nextController)
@@ -116,11 +116,11 @@ export function App() {
         canUndo={view.canUndo}
         canExport={backgroundLoaded}
         isBusy={view.isBusy}
-        projectStatus={projectStatus}
+        projectStatus={projectSession.status}
         onRequestBackground={requestBackground}
         onUndo={() => void controller?.undo()}
         onRedo={() => void controller?.redo()}
-        onExport={() => void controller?.downloadPng()}
+        onExport={() => void projectSession.flush().then(() => controller?.downloadPng())}
       />
       <EditorDragContext
         backgroundLoaded={backgroundLoaded}

@@ -12,7 +12,12 @@ import {
   parseStoredProject,
   validateProjectSnapshot,
 } from "./project-format"
-import type { LoadProjectResult, ProjectStore, SaveProjectResult } from "./project-store"
+import type {
+  LoadProjectResult,
+  ProjectStore,
+  SaveProjectResult,
+  StorageDurability,
+} from "./project-store"
 
 const DATABASE_NAME = "qingshe-projects-v1"
 const PROJECTS_STORE = "projects"
@@ -25,11 +30,20 @@ const BUILT_IN_ASSET_IDS: ReadonlySet<AssetId> = new Set(
 class ProjectDatabase extends Dexie {
   readonly projects!: Table<unknown, string>
   readonly assets!: Table<unknown, string>
+  blocked = false
+  versionChanged = false
 
   constructor() {
     super(DATABASE_NAME)
     this.version(0.1).stores({ projects: "", assets: "" })
     this.version(0.2).stores({ projects: "", assets: "" }).upgrade(migrateDatabase)
+    this.on("blocked", () => {
+      this.blocked = true
+    })
+    this.on("versionchange", () => {
+      this.versionChanged = true
+      this.close()
+    })
   }
 }
 
@@ -38,7 +52,7 @@ class CorruptStoredRecordError extends Error {
 }
 
 export class IndexedDbProjectStore implements ProjectStore {
-  private persistenceRequested = false
+  private durabilityPromise: Promise<StorageDurability> | null = null
 
   async load(): Promise<LoadProjectResult> {
     const database = new ProjectDatabase()
@@ -63,7 +77,7 @@ export class IndexedDbProjectStore implements ProjectStore {
         ? { kind: "loaded", snapshot: validation.value }
         : { kind: "corrupt" }
     } catch {
-      return { kind: "error" }
+      return classifyLoadFailure(database)
     } finally {
       database.close()
     }
@@ -78,22 +92,19 @@ export class IndexedDbProjectStore implements ProjectStore {
     try {
       await database.open()
       await writeSnapshot(database, project, validation.value)
-      this.requestPersistenceOnce()
-      return { kind: "saved" }
+      return { kind: "saved", durability: await this.resolveDurability() }
     } catch (error) {
+      if (database.versionChanged) return { kind: "reload_required" }
+      if (database.blocked) return { kind: "blocked" }
       return isQuotaExceeded(error) ? { kind: "quota_exceeded" } : { kind: "error" }
     } finally {
       database.close()
     }
   }
 
-  private requestPersistenceOnce(): void {
-    if (this.persistenceRequested || !("storage" in navigator)) return
-    this.persistenceRequested = true
-    void navigator.storage.persist().then(
-      () => undefined,
-      () => undefined,
-    )
+  private resolveDurability(): Promise<StorageDurability> {
+    this.durabilityPromise ??= requestStorageDurability()
+    return this.durabilityPromise
   }
 }
 
@@ -137,4 +148,24 @@ function isQuotaExceeded(error: unknown): boolean {
   if (error.name === "QuotaExceededError") return true
   if ("inner" in error && isQuotaExceeded(error.inner)) return true
   return "cause" in error && isQuotaExceeded(error.cause)
+}
+
+function classifyLoadFailure(database: ProjectDatabase): LoadProjectResult {
+  if (database.versionChanged) return { kind: "reload_required" }
+  if (database.blocked) return { kind: "blocked" }
+  return { kind: "error" }
+}
+
+async function requestStorageDurability(): Promise<StorageDurability> {
+  if (typeof navigator === "undefined" || !("storage" in navigator)) return "unsupported"
+  const storage = navigator.storage
+  if (typeof storage.persisted !== "function" || typeof storage.persist !== "function") {
+    return "unsupported"
+  }
+  try {
+    if (await storage.persisted()) return "persistent"
+    return (await storage.persist()) ? "persistent" : "best_effort"
+  } catch {
+    return "best_effort"
+  }
 }
