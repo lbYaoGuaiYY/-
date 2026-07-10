@@ -41,11 +41,17 @@ export function App() {
   const [view, setView] = useState<EditorViewState>(FALLBACK_VIEW)
   const panels = useEditorPanels()
   const backgroundInputRef = useRef<HTMLInputElement>(null)
+  const pendingBackgroundRef = useRef<File | null>(null)
   const projectSession = useProjectSession(controller)
 
   const handleEditorReady = useCallback((nextController: EditorController | null) => {
     setController(nextController)
     setView(nextController?.getSnapshot() ?? FALLBACK_VIEW)
+    const pendingBackground = pendingBackgroundRef.current
+    if (nextController !== null && pendingBackground !== null) {
+      pendingBackgroundRef.current = null
+      void nextController.importBackground(pendingBackground)
+    }
   }, [])
 
   useEffect(() => {
@@ -89,8 +95,9 @@ export function App() {
 
   function handleBackgroundFile(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.currentTarget.files?.item(0)
-    if (controller !== null && file !== null && file !== undefined) {
-      void controller.importBackground(file)
+    if (file !== null && file !== undefined) {
+      if (controller === null) pendingBackgroundRef.current = file
+      else void controller.importBackground(file)
     }
     event.currentTarget.value = ""
   }

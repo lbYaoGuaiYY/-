@@ -3,7 +3,7 @@ import { ImageSquare, UploadSimple } from "@phosphor-icons/react"
 import { useEffect, useRef } from "react"
 
 import { EDITOR_CANVAS_DROP_ID } from "./drag-placement"
-import { EditorController } from "./editor-controller"
+import type { EditorController } from "./editor-controller"
 
 export type EditorCanvasProps = {
   readonly backgroundLoaded: boolean
@@ -25,20 +25,27 @@ export function EditorCanvas({
     const stageElement = stageRef.current
     if (canvasElement === null || stageElement === null) return
 
-    const controller = new EditorController(canvasElement)
-    onReady(controller)
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (entry !== undefined) {
-        controller.resizeDisplay(entry.contentRect.width, entry.contentRect.height)
-      }
+    let disposed = false
+    let controller: EditorController | null = null
+    let observer: ResizeObserver | null = null
+    void import("./editor-controller").then(({ EditorController }) => {
+      if (disposed) return
+      controller = new EditorController(canvasElement)
+      onReady(controller)
+      observer = new ResizeObserver((entries) => {
+        const entry = entries[0]
+        if (entry !== undefined) {
+          controller?.resizeDisplay(entry.contentRect.width, entry.contentRect.height)
+        }
+      })
+      observer.observe(stageElement)
     })
-    observer.observe(stageElement)
 
     return () => {
-      observer.disconnect()
+      disposed = true
+      observer?.disconnect()
       onReady(null)
-      void controller.dispose()
+      void controller?.dispose()
     }
   }, [onReady])
 
