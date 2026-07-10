@@ -4,7 +4,6 @@ import {
   DragOverlay,
   type DragStartEvent,
   KeyboardSensor,
-  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -13,13 +12,15 @@ import type { ReactNode } from "react"
 import { useState } from "react"
 
 import { AssetDragOverlay } from "../assets/DraggableAssetTile"
-import { DEMO_ASSETS, type DemoAsset } from "../assets/demo-assets"
-import {
-  clientPointToLogicalCanvasPoint,
-  EDITOR_CANVAS_DROP_ID,
-  parseAssetDragPayload,
-} from "./drag-placement"
+import type { DemoAsset } from "../assets/demo-assets"
+import { clientPointToLogicalCanvasPoint, EDITOR_CANVAS_DROP_ID } from "./drag-placement"
 import type { EditorController } from "./editor-controller"
+import {
+  EDITOR_DRAG_ANNOUNCEMENTS,
+  EDITOR_SCREEN_READER_INSTRUCTIONS,
+  findDemoAssetFromDragData,
+} from "./editor-drag-accessibility"
+import { editorKeyboardCoordinates, MousePenPointerSensor } from "./editor-drag-sensors"
 import type { CanvasSize } from "./editor-model"
 
 export type EditorDragContextProps = {
@@ -39,17 +40,17 @@ export function EditorDragContext({
 }: EditorDragContextProps) {
   const [activeAsset, setActiveAsset] = useState<DemoAsset | null>(null)
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MousePenPointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: editorKeyboardCoordinates }),
   )
 
   function handleDragStart(event: DragStartEvent): void {
-    setActiveAsset(findDemoAsset(event.active.data.current))
+    setActiveAsset(findDemoAssetFromDragData(event.active.data.current))
   }
 
   function handleDragEnd(event: DragEndEvent): void {
-    const asset = findDemoAsset(event.active.data.current)
+    const asset = findDemoAssetFromDragData(event.active.data.current)
     setActiveAsset(null)
     if (asset === null) return
     if (!backgroundLoaded) {
@@ -73,6 +74,10 @@ export function EditorDragContext({
 
   return (
     <DndContext
+      accessibility={{
+        announcements: EDITOR_DRAG_ANNOUNCEMENTS,
+        screenReaderInstructions: EDITOR_SCREEN_READER_INSTRUCTIONS,
+      }}
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragCancel={() => setActiveAsset(null)}
@@ -84,12 +89,4 @@ export function EditorDragContext({
       </DragOverlay>
     </DndContext>
   )
-}
-
-function findDemoAsset(value: unknown): DemoAsset | null {
-  const payload = parseAssetDragPayload(value)
-  if (payload === null) return null
-  const assetId = String(payload.assetId)
-  if (!assetId.startsWith("built-in:")) return null
-  return DEMO_ASSETS.find((asset) => asset.id === assetId.slice("built-in:".length)) ?? null
 }

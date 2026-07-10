@@ -28,7 +28,73 @@ test("drags a wedding asset from the panel onto the canvas", async ({ page }) =>
 
   // Then
   await expect(page.getByTestId("layer-list")).toContainText("奶油花艺拱门")
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(1)
   await expect(page.getByTestId("asset-drag-overlay")).toHaveCount(0)
+})
+
+test("places and cancels an asset with the keyboard", async ({ page }) => {
+  // Given
+  await page.goto("/")
+  await setImageInput(page)
+  const asset = page.getByTestId("asset-card-floral-arch")
+  await asset.focus()
+  await expect(page.getByText(/焦点位于婚礼素材时，按空格键或回车键拿起素材/)).toHaveCount(1)
+
+  // When cancelling
+  await page.keyboard.press("Space")
+  await expect(page.getByTestId("asset-drag-overlay")).toBeVisible()
+  await page.keyboard.press("Escape")
+
+  // Then cancellation is clean
+  await expect(page.getByTestId("asset-drag-overlay")).toHaveCount(0)
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(0)
+  await expect(asset).toBeFocused()
+
+  // When placing
+  await page.keyboard.press("Space")
+  await page.keyboard.press("ArrowRight")
+  await expect(page.getByTestId("editor-canvas")).toHaveClass(/is-drop-target/)
+  await page.keyboard.press("Space")
+
+  // Then
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(1)
+  await expect(page.getByTestId("asset-drag-overlay")).toHaveCount(0)
+})
+
+test("keeps touch scrolling usable and supports long-press placement", async ({ page }) => {
+  await page.goto("/")
+  await setImageInput(page)
+  const asset = page.getByTestId("asset-card-floral-arch")
+  const canvas = page.getByTestId("editor-canvas")
+  const assetBox = await asset.boundingBox()
+  const canvasBox = await canvas.boundingBox()
+  if (assetBox === null || canvasBox === null) throw new Error("Touch targets must be visible")
+  const start = { x: assetBox.x + assetBox.width / 2, y: assetBox.y + assetBox.height / 2 }
+  const client = await page.context().newCDPSession(page)
+  await client.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 })
+
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] })
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: start.x, y: start.y + 32 }],
+  })
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await expect(page.getByTestId("asset-drag-overlay")).toHaveCount(0)
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(0)
+
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] })
+  await page.waitForTimeout(220)
+  await expect(page.getByTestId("asset-drag-overlay")).toBeVisible()
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: canvasBox.x + canvasBox.width / 2, y: canvasBox.y + canvasBox.height / 2 }],
+  })
+  await expect(canvas).toHaveClass(/is-drop-target/)
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(1)
+  await expect(page.getByTestId("asset-drag-overlay")).toHaveCount(0)
+  await client.detach()
 })
 
 async function setImageInput(page: Page): Promise<void> {

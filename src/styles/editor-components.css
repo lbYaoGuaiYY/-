@@ -198,6 +198,13 @@
   pointer-events: none;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .asset-drag-overlay {
+    animation: none;
+    transition: none;
+  }
+}
+
 .asset-panel__empty {
   margin: 0;
   padding: var(--space-6) var(--space-3);
