@@ -15,16 +15,30 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { DotsSixVertical, Image, Stack, X } from "@phosphor-icons/react"
+import {
+  DotsSixVertical,
+  Eye,
+  EyeSlash,
+  Image,
+  Lock,
+  LockOpen,
+  Stack,
+  X,
+} from "@phosphor-icons/react"
 import { MousePenPointerSensor } from "./editor-drag-sensors"
-import type { ImageLayer, LayerId } from "./editor-model"
+import type { AssetId, ImageLayer, LayerId } from "./editor-model"
 import { LayerIdSchema } from "./editor-model"
 import { toLayerPanelOrder } from "./layer-order"
 
 export type LayerPanelProps = {
   readonly layers: readonly ImageLayer[]
   readonly selectedLayerId: LayerId | null
+  readonly getAssetSource: (id: AssetId) => string | undefined
   readonly onClose: () => void
+  readonly onLayerStateChange: (
+    id: LayerId,
+    changes: Partial<Pick<ImageLayer, "visible" | "locked">>,
+  ) => void
   readonly onReorder: (activeId: LayerId, targetId: LayerId) => void
   readonly onSelect: (id: LayerId) => void
 }
@@ -37,7 +51,9 @@ const LAYER_SORT_INSTRUCTIONS = {
 export function LayerPanel({
   layers,
   selectedLayerId,
+  getAssetSource,
   onClose,
+  onLayerStateChange,
   onReorder,
   onSelect,
 }: LayerPanelProps) {
@@ -99,7 +115,9 @@ export function LayerPanel({
                   layer={layer}
                   position={index + 1}
                   selected={layer.id === selectedLayerId}
+                  thumbnailSrc={getAssetSource(layer.assetId)}
                   total={displayLayers.length}
+                  onLayerStateChange={onLayerStateChange}
                   onSelect={onSelect}
                 />
               ))}
@@ -115,20 +133,27 @@ function SortableLayerRow({
   layer,
   position,
   selected,
+  thumbnailSrc,
   total,
+  onLayerStateChange,
   onSelect,
 }: {
   readonly layer: ImageLayer
   readonly position: number
   readonly selected: boolean
+  readonly thumbnailSrc: string | undefined
   readonly total: number
+  readonly onLayerStateChange: (
+    id: LayerId,
+    changes: Partial<Pick<ImageLayer, "visible" | "locked">>,
+  ) => void
   readonly onSelect: (id: LayerId) => void
 }) {
-  const sortable = useSortable({ id: layer.id })
+  const sortable = useSortable({ id: layer.id, disabled: { draggable: layer.locked } })
   return (
     <li
       ref={sortable.setNodeRef}
-      className={`layer-row${selected ? " is-selected" : ""}${sortable.isDragging ? " is-sorting" : ""}`}
+      className={`layer-row${selected ? " is-selected" : ""}${sortable.isDragging ? " is-sorting" : ""}${layer.visible ? "" : " is-hidden"}${layer.locked ? " is-locked" : ""}`}
       data-testid={layerTestId(layer)}
       style={{
         transform: CSS.Transform.toString(sortable.transform),
@@ -140,6 +165,7 @@ function SortableLayerRow({
         className="layer-drag-handle"
         data-testid={layerHandleTestId(layer)}
         type="button"
+        disabled={layer.locked}
         {...sortable.attributes}
         {...sortable.listeners}
         aria-label={`调整${layer.name}图层顺序，当前位置${position}，共${total}层`}
@@ -147,7 +173,13 @@ function SortableLayerRow({
       >
         <DotsSixVertical size={18} aria-hidden="true" />
       </button>
-      <Image size={16} aria-hidden="true" />
+      <span className="layer-thumbnail" aria-hidden="true">
+        {thumbnailSrc === undefined ? (
+          <Image size={16} />
+        ) : (
+          <img src={thumbnailSrc} alt="" draggable={false} />
+        )}
+      </span>
       <button
         className="layer-select"
         type="button"
@@ -158,7 +190,34 @@ function SortableLayerRow({
           {layer.name}
         </span>
       </button>
-      <span className="layer-meta">图片</span>
+      <span className="layer-state-actions">
+        <button
+          className="layer-state-button"
+          type="button"
+          aria-label={`${layer.visible ? "隐藏" : "显示"}${layer.name}`}
+          aria-pressed={layer.visible}
+          onClick={() => onLayerStateChange(layer.id, { visible: !layer.visible })}
+        >
+          {layer.visible ? (
+            <Eye size={16} aria-hidden="true" />
+          ) : (
+            <EyeSlash size={16} aria-hidden="true" />
+          )}
+        </button>
+        <button
+          className="layer-state-button"
+          type="button"
+          aria-label={`${layer.locked ? "解锁" : "锁定"}${layer.name}`}
+          aria-pressed={layer.locked}
+          onClick={() => onLayerStateChange(layer.id, { locked: !layer.locked })}
+        >
+          {layer.locked ? (
+            <Lock size={16} aria-hidden="true" />
+          ) : (
+            <LockOpen size={16} aria-hidden="true" />
+          )}
+        </button>
+      </span>
     </li>
   )
 }

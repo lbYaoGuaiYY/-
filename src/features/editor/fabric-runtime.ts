@@ -9,23 +9,18 @@ import type {
   LayerId,
   LayerTransform,
 } from "./editor-model"
+import { applyFabricDisplaySize } from "./fabric-display"
 import { configureFabricImage, loadFabricImage, readFabricTransform } from "./fabric-image"
 import { type LayerDirection, moveFabricSelection, reorderFabricLayers } from "./fabric-layer-order"
+import { type FabricLayerMeta, updateFabricLayerState } from "./fabric-layer-state"
 
 export type { LayerDirection } from "./fabric-layer-order"
-
-type LayerMeta = {
-  readonly assetId: ImageLayer["assetId"]
-  readonly name: string
-  readonly visible: boolean
-  readonly locked: boolean
-}
 
 export class FabricRuntime {
   private readonly canvas: Canvas
   private readonly objectIds = new WeakMap<FabricObject, LayerId>()
   private readonly layerObjects = new Map<LayerId, FabricImage>()
-  private readonly layerMeta = new Map<LayerId, LayerMeta>()
+  private readonly layerMeta = new Map<LayerId, FabricLayerMeta>()
   private readonly accentColor: string
   private viewportWidth = 960
   private viewportHeight = 640
@@ -73,7 +68,7 @@ export class FabricRuntime {
       evented: false,
     })
     this.canvas.backgroundImage = image
-    this.applyDisplaySize()
+    applyFabricDisplaySize(this.canvas, this.viewportWidth, this.viewportHeight)
     this.canvas.requestRenderAll()
     return size
   }
@@ -110,6 +105,7 @@ export class FabricRuntime {
         opacity: 1,
       },
       this.accentColor,
+      { visible: true, locked: false },
     )
     this.registerLayer(image, id, {
       assetId: record.id,
@@ -142,7 +138,7 @@ export class FabricRuntime {
       const record = assets.get(layer.assetId)
       if (record !== undefined) {
         const image = await loadFabricImage(record)
-        configureFabricImage(image, layer.transform, this.accentColor)
+        configureFabricImage(image, layer.transform, this.accentColor, layer)
         this.registerLayer(image, layer.id, {
           assetId: layer.assetId,
           name: layer.name,
@@ -153,7 +149,7 @@ export class FabricRuntime {
       }
     }
 
-    this.applyDisplaySize()
+    applyFabricDisplaySize(this.canvas, this.viewportWidth, this.viewportHeight)
     this.canvas.requestRenderAll()
   }
 
@@ -174,11 +170,18 @@ export class FabricRuntime {
     return active === undefined ? null : (this.objectIds.get(active) ?? null)
   }
 
-  selectLayer(id: LayerId): void {
+  selectLayer(id: LayerId): boolean {
     const object = this.layerObjects.get(id)
-    if (object === undefined) return
+    const meta = this.layerMeta.get(id)
+    if (object === undefined || meta === undefined) return false
+    if (!meta.visible || meta.locked) {
+      this.canvas.discardActiveObject()
+      this.canvas.requestRenderAll()
+      return false
+    }
     this.canvas.setActiveObject(object)
     this.canvas.requestRenderAll()
+    return true
   }
 
   clearSelection(): boolean {
@@ -205,6 +208,10 @@ export class FabricRuntime {
     return reorderFabricLayers(this.canvas, this.layerObjects, order)
   }
 
+  updateLayerState(id: LayerId, changes: Partial<Pick<ImageLayer, "visible" | "locked">>): boolean {
+    return updateFabricLayerState(this.canvas, this.layerObjects, this.layerMeta, id, changes)
+  }
+
   updateSelection(transform: Partial<LayerTransform>): boolean {
     const object = this.canvas.getActiveObject()
     if (object === undefined) return false
@@ -227,7 +234,7 @@ export class FabricRuntime {
   resizeDisplay(width: number, height: number): number {
     this.viewportWidth = width
     this.viewportHeight = height
-    return this.applyDisplaySize()
+    return applyFabricDisplaySize(this.canvas, this.viewportWidth, this.viewportHeight)
   }
 
   async exportPng(): Promise<Blob | null> {
@@ -253,25 +260,9 @@ export class FabricRuntime {
     this.canvas.backgroundImage = image
   }
 
-  private registerLayer(image: FabricImage, id: LayerId, meta: LayerMeta): void {
+  private registerLayer(image: FabricImage, id: LayerId, meta: FabricLayerMeta): void {
     this.objectIds.set(image, id)
     this.layerObjects.set(id, image)
     this.layerMeta.set(id, meta)
-  }
-
-  private applyDisplaySize(): number {
-    const width = this.canvas.getWidth()
-    const height = this.canvas.getHeight()
-    const scale = Math.min(
-      Math.max(this.viewportWidth - 96, 160) / width,
-      Math.max(this.viewportHeight - 64, 120) / height,
-      1,
-    )
-    this.canvas.setDimensions(
-      { width: `${Math.round(width * scale)}px`, height: `${Math.round(height * scale)}px` },
-      { cssOnly: true },
-    )
-    this.canvas.calcOffset()
-    return scale
   }
 }

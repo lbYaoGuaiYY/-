@@ -127,6 +127,35 @@ test("reorders layers from the panel and round-trips undo", async ({ page }) => 
   await expect(rows).toHaveText([/奶油花艺拱门/, /木质迎宾牌/, /柔粉花柱/])
 })
 
+test("shows layer thumbnails and enforces visibility and lock state", async ({ page }) => {
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  const row = page.getByTestId("layer-item-floral-arch")
+  await expect(row.locator(".layer-thumbnail img")).toHaveCount(1)
+
+  await page.getByRole("button", { name: "锁定奶油花艺拱门" }).click()
+  await expect(row).toHaveClass(/is-locked/)
+  await expect(page.getByTestId("layer-sort-handle-floral-arch")).toBeDisabled()
+  await expect(page.getByLabel("X", { exact: true })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "解锁奶油花艺拱门" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+
+  await page.getByRole("button", { name: "解锁奶油花艺拱门" }).click()
+  await expect(page.getByLabel("X", { exact: true })).toBeEnabled()
+  await page.getByRole("button", { name: "隐藏奶油花艺拱门" }).click()
+  await expect(row).toHaveClass(/is-hidden/)
+  await expect(page.getByLabel("X", { exact: true })).toBeDisabled()
+
+  await page.getByRole("button", { name: "撤销" }).click()
+  await expect(page.getByRole("button", { name: "隐藏奶油花艺拱门" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+})
+
 async function setImageInput(page: Page): Promise<void> {
   await page.getByTestId("background-file-input").evaluate(async (element) => {
     if (!(element instanceof HTMLInputElement))

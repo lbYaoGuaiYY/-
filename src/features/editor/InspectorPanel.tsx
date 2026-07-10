@@ -4,11 +4,12 @@ import type { ImageLayer, LayerTransform } from "./editor-model"
 
 export type InspectorPanelProps = {
   readonly layer: ImageLayer | null
+  readonly readOnly: boolean
   readonly onClose: () => void
   readonly onUpdate: (transform: Partial<LayerTransform>) => void
 }
 
-export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps) {
+export function InspectorPanel({ layer, readOnly, onClose, onUpdate }: InspectorPanelProps) {
   return (
     <section className="panel-section" aria-labelledby="inspector-title">
       <header className="panel-header">
@@ -34,15 +35,18 @@ export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps
           <div className="selected-object-name" title={layer.name}>
             {layer.name}
           </div>
+          {readOnly && <p className="locked-layer-note">请先显示并解锁图层再进行编辑</p>}
           <div className="property-grid">
             <NumberField
               label="X"
               value={Math.round(layer.transform.x)}
+              disabled={readOnly}
               onValue={(x) => onUpdate({ x })}
             />
             <NumberField
               label="Y"
               value={Math.round(layer.transform.y)}
+              disabled={readOnly}
               onValue={(y) => onUpdate({ y })}
             />
             <NumberField
@@ -51,6 +55,7 @@ export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps
               min={1}
               max={500}
               suffix="%"
+              disabled={readOnly}
               onValue={(scalePercent) => {
                 const scale = scalePercent / 100
                 onUpdate({ scaleX: scale, scaleY: scale })
@@ -62,6 +67,7 @@ export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps
               min={-360}
               max={360}
               suffix="°"
+              disabled={readOnly}
               onValue={(angle) => onUpdate({ angle })}
             />
             <NumberField
@@ -70,6 +76,7 @@ export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps
               min={0}
               max={100}
               suffix="%"
+              disabled={readOnly}
               onValue={(opacityPercent) => onUpdate({ opacity: opacityPercent / 100 })}
             />
           </div>
@@ -78,6 +85,7 @@ export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps
             <button
               className={`text-button${layer.transform.flipX ? " is-active" : ""}`}
               type="button"
+              disabled={readOnly}
               onClick={() => onUpdate({ flipX: !layer.transform.flipX })}
             >
               <FlipHorizontal size={16} aria-hidden="true" />
@@ -86,6 +94,7 @@ export function InspectorPanel({ layer, onClose, onUpdate }: InspectorPanelProps
             <button
               className={`text-button${layer.transform.flipY ? " is-active" : ""}`}
               type="button"
+              disabled={readOnly}
               onClick={() => onUpdate({ flipY: !layer.transform.flipY })}
             >
               <FlipVertical size={16} aria-hidden="true" />
@@ -104,10 +113,11 @@ type NumberFieldProps = {
   readonly min?: number
   readonly max?: number
   readonly suffix?: string
+  readonly disabled?: boolean
   readonly onValue: (value: number) => void
 }
 
-function NumberField({ label, value, min, max, suffix, onValue }: NumberFieldProps) {
+function NumberField({ label, value, min, max, suffix, disabled, onValue }: NumberFieldProps) {
   return (
     <label className="field-group">
       <span className="field-label">
@@ -120,6 +130,7 @@ function NumberField({ label, value, min, max, suffix, onValue }: NumberFieldPro
         value={value}
         min={min}
         max={max}
+        disabled={disabled}
         onChange={(event) => {
           const next = event.currentTarget.valueAsNumber
           if (Number.isFinite(next)) onValue(next)

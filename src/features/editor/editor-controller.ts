@@ -1,16 +1,22 @@
 import type { DemoAsset } from "../assets/demo-assets"
-import { captureProjectSnapshot, registerProjectAssets } from "../projects/editor-project-assets"
+import { captureProjectSnapshot } from "../projects/editor-project-assets"
 import type { ProjectSnapshot } from "../projects/project-format"
 import { type AssetRecord, AssetRegistry } from "./asset-registry"
 import type { ClientPoint } from "./drag-placement"
 import {
-  createLayerId,
+  addRuntimeLayer,
+  downloadRuntimePng,
+  restoreRuntimeProject,
+} from "./editor-controller-operations"
+import {
+  type AssetId,
   type EditorDocument,
+  type ImageLayer,
   INITIAL_EDITOR_DOCUMENT,
   type LayerId,
   type LayerTransform,
 } from "./editor-model"
-import type { EditorViewState } from "./editor-view-state"
+import { createEditorViewState, type EditorViewState } from "./editor-view-state"
 import { FabricRuntime, type LayerDirection } from "./fabric-runtime"
 import {
   canRedo,
@@ -34,7 +40,7 @@ export class EditorController {
 
   constructor(element: HTMLCanvasElement) {
     this.runtime = new FabricRuntime(element)
-    this.state = this.createState(null, false, null, 100)
+    this.state = createEditorViewState(this.history, null, false, null, 100)
     this.eventDisposers = [
       this.runtime.onSelectionChange(() => this.syncSelection()),
       this.runtime.onObjectModified(() => this.commitRuntimeLayers()),
@@ -46,36 +52,28 @@ export class EditorController {
     return () => this.listeners.delete(listener)
   }
 
-  getSnapshot(): EditorViewState {
-    return this.state
-  }
+  getSnapshot = (): EditorViewState => this.state
 
-  captureProject(): ProjectSnapshot | null {
-    return captureProjectSnapshot(this.history.present, this.assets)
-  }
+  captureProject = (): ProjectSnapshot | null =>
+    captureProjectSnapshot(this.history.present, this.assets)
+
+  getAssetSource = (id: AssetId): string | undefined => this.assets.get(id)?.src
 
   async restoreProject(snapshot: ProjectSnapshot): Promise<boolean> {
-    if (this.state.isBusy || !registerProjectAssets(snapshot, this.assets)) return false
-    this.state = this.createState(null, true, null, this.state.zoomPercent)
+    if (this.state.isBusy) return false
+    this.state = createEditorViewState(this.history, null, true, null, this.state.zoomPercent)
     this.emit()
-    try {
-      await this.runtime.restore(snapshot.document, this.assets)
-      this.history = createHistory(snapshot.document)
-      return true
-    } catch (error) {
-      if (!(error instanceof Error)) throw error
-      this.history = createHistory(INITIAL_EDITOR_DOCUMENT)
-      await this.runtime.restore(INITIAL_EDITOR_DOCUMENT, this.assets)
-      return false
-    } finally {
-      this.state = this.createState(null, false, null, this.state.zoomPercent)
-      this.emit()
-    }
+    const restored = await restoreRuntimeProject(this.runtime, this.assets, snapshot)
+    this.history = createHistory(restored ?? INITIAL_EDITOR_DOCUMENT)
+    this.state = createEditorViewState(this.history, null, false, null, this.state.zoomPercent)
+    this.emit()
+    return restored !== null
   }
 
   resizeDisplay(width: number, height: number): void {
     const zoomPercent = Math.round(this.runtime.resizeDisplay(width, height) * 100)
-    this.state = this.createState(
+    this.state = createEditorViewState(
+      this.history,
       this.state.selectedLayerId,
       this.state.isBusy,
       this.state.errorMessage,
@@ -119,22 +117,28 @@ export class EditorController {
     })
   }
 
-  deleteSelection(): void {
-    if (this.runtime.deleteSelection()) this.commitRuntimeLayers()
-  }
+  deleteSelection = (): void => this.commitRuntimeChange(this.runtime.deleteSelection())
 
   selectLayer(id: LayerId): void {
-    this.runtime.selectLayer(id)
-    this.syncSelection()
+    if (this.runtime.selectLayer(id)) this.syncSelection()
+    else {
+      this.state = createEditorViewState(
+        this.history,
+        id,
+        this.state.isBusy,
+        this.state.errorMessage,
+        this.state.zoomPercent,
+      )
+      this.emit()
+    }
   }
 
-  clearSelection(): void {
+  clearSelection = (): void => {
     if (this.runtime.clearSelection()) this.syncSelection()
   }
 
-  moveSelection(direction: LayerDirection): void {
-    if (this.runtime.moveSelection(direction)) this.commitRuntimeLayers()
-  }
+  moveSelection = (direction: LayerDirection): void =>
+    this.commitRuntimeChange(this.runtime.moveSelection(direction))
 
   reorderLayers(activeId: LayerId, targetId: LayerId): void {
     const order = this.history.present.layers.map((layer) => layer.id)
@@ -142,13 +146,31 @@ export class EditorController {
     if (reordered !== order && this.runtime.reorderLayers(reordered)) this.commitRuntimeLayers()
   }
 
-  updateSelection(transform: Partial<LayerTransform>): void {
-    if (this.runtime.updateSelection(transform)) this.commitRuntimeLayers()
+  updateLayerState(id: LayerId, changes: Partial<Pick<ImageLayer, "visible" | "locked">>): void {
+    const preserveRowSelection = this.state.selectedLayerId === id
+    if (!this.runtime.updateLayerState(id, changes)) return
+    this.commitRuntimeLayers()
+    if (preserveRowSelection) {
+      if (this.runtime.selectLayer(id)) {
+        this.syncSelection()
+        return
+      }
+      this.state = createEditorViewState(
+        this.history,
+        id,
+        this.state.isBusy,
+        this.state.errorMessage,
+        this.state.zoomPercent,
+      )
+      this.emit()
+    }
   }
 
-  nudgeSelection(deltaX: number, deltaY: number): void {
-    if (this.runtime.nudgeSelection(deltaX, deltaY)) this.commitRuntimeLayers()
-  }
+  updateSelection = (transform: Partial<LayerTransform>): void =>
+    this.commitRuntimeChange(this.runtime.updateSelection(transform))
+
+  nudgeSelection = (deltaX: number, deltaY: number): void =>
+    this.commitRuntimeChange(this.runtime.nudgeSelection(deltaX, deltaY))
 
   async undo(): Promise<void> {
     if (this.state.isBusy || !canUndo(this.history)) return
@@ -169,25 +191,11 @@ export class EditorController {
     }
 
     await this.runBusy(async () => {
-      const blob = await this.runtime.exportPng()
-      if (blob === null) {
-        this.setError("图片导出失败，请重试")
-        return
-      }
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement("a")
-      anchor.href = url
-      anchor.download = `轻设设计-${new Date().toISOString().slice(0, 10)}.png`
-      document.body.append(anchor)
-      anchor.click()
-      anchor.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 0)
+      if (!(await downloadRuntimePng(this.runtime))) this.setError("图片导出失败，请重试")
     })
   }
 
-  clearError(): void {
-    this.setError(null)
-  }
+  clearError = (): void => this.setError(null)
 
   async dispose(): Promise<void> {
     for (const disposeEvent of this.eventDisposers) disposeEvent()
@@ -197,17 +205,22 @@ export class EditorController {
   }
 
   private async addRecord(record: AssetRecord, center: ClientPoint | null = null): Promise<void> {
-    const id = createLayerId(crypto.randomUUID())
-    const added = await this.runtime.addLayer(record, id, {
-      canvasSize: this.history.present.canvasSize,
+    const added = await addRuntimeLayer(
+      this.runtime,
+      record,
+      this.history.present.canvasSize,
       center,
-    })
+    )
     if (added) this.commitRuntimeLayers()
     else this.setError("素材无法读取，请确认文件没有损坏")
   }
 
   private commitRuntimeLayers(): void {
     this.commit({ ...this.history.present, layers: this.runtime.captureLayers() })
+  }
+
+  private commitRuntimeChange(changed: boolean): void {
+    if (changed) this.commitRuntimeLayers()
   }
 
   private commit(documentState: EditorDocument): void {
@@ -221,7 +234,8 @@ export class EditorController {
   }
 
   private syncSelection(): void {
-    this.state = this.createState(
+    this.state = createEditorViewState(
+      this.history,
       this.runtime.getSelectedLayerId(),
       this.state.isBusy,
       this.state.errorMessage,
@@ -230,25 +244,9 @@ export class EditorController {
     this.emit()
   }
 
-  private createState(
-    selectedLayerId: LayerId | null,
-    isBusy: boolean,
-    errorMessage: string | null,
-    zoomPercent: number,
-  ): EditorViewState {
-    return {
-      document: this.history.present,
-      selectedLayerId,
-      canUndo: canUndo(this.history),
-      canRedo: canRedo(this.history),
-      isBusy,
-      errorMessage,
-      zoomPercent,
-    }
-  }
-
   private setError(errorMessage: string | null): void {
-    this.state = this.createState(
+    this.state = createEditorViewState(
+      this.history,
       this.state.selectedLayerId,
       this.state.isBusy,
       errorMessage,
@@ -259,14 +257,21 @@ export class EditorController {
 
   private async runBusy(operation: () => Promise<void>): Promise<void> {
     if (this.state.isBusy) return
-    this.state = this.createState(this.state.selectedLayerId, true, null, this.state.zoomPercent)
+    this.state = createEditorViewState(
+      this.history,
+      this.state.selectedLayerId,
+      true,
+      null,
+      this.state.zoomPercent,
+    )
     this.emit()
     try {
       await operation()
     } catch (error) {
       this.setError(error instanceof Error ? "操作失败，请确认图片有效后重试" : "操作失败，请重试")
     } finally {
-      this.state = this.createState(
+      this.state = createEditorViewState(
+        this.history,
         this.state.selectedLayerId,
         false,
         this.state.errorMessage,
@@ -276,7 +281,5 @@ export class EditorController {
     }
   }
 
-  private emit(): void {
-    for (const listener of this.listeners) listener()
-  }
+  private emit = (): void => this.listeners.forEach((listener) => void listener())
 }

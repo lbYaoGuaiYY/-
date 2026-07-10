@@ -185,7 +185,7 @@
 
 .layer-row {
   display: grid;
-  grid-template-columns: 28px 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px 32px minmax(0, 1fr) auto;
   min-height: 36px;
   align-items: center;
   gap: var(--space-2);
@@ -197,7 +197,7 @@
 .layer-row.is-sorting {
   z-index: 2;
   background: var(--surface-elevated);
-  box-shadow: var(--shadow-floating);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
   opacity: 0.78;
 }
 
@@ -208,6 +208,15 @@
 .layer-row.is-selected {
   border-color: var(--accent-primary);
   background: var(--surface-selected);
+}
+
+.layer-row.is-hidden .layer-thumbnail,
+.layer-row.is-hidden .layer-select {
+  opacity: 0.46;
+}
+
+.layer-row.is-locked {
+  border-style: dashed;
 }
 
 .layer-name {

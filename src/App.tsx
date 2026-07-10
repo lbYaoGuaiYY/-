@@ -79,6 +79,7 @@ export function App() {
   const backgroundLoaded = view.document.backgroundAssetId !== null
   const selectedLayer =
     view.document.layers.find((layer) => layer.id === view.selectedLayerId) ?? null
+  const selectionEditable = selectedLayer?.visible === true && !selectedLayer.locked
 
   function requestBackground(): void {
     backgroundInputRef.current?.click()
@@ -136,7 +137,7 @@ export function App() {
           </div>
           <section className="canvas-column" aria-label="编辑区">
             <EditorToolbar
-              hasSelection={view.selectedLayerId !== null}
+              hasSelection={selectionEditable}
               onToggleAssets={() => setAssetPanelOpen((open) => !open)}
               onMoveLayer={(direction) => controller?.moveSelection(direction)}
               onDelete={() => controller?.deleteSelection()}
@@ -153,13 +154,16 @@ export function App() {
           >
             <InspectorPanel
               layer={selectedLayer}
+              readOnly={selectedLayer !== null && (!selectedLayer.visible || selectedLayer.locked)}
               onClose={() => setInspectorPanelOpen(false)}
               onUpdate={(transform) => controller?.updateSelection(transform)}
             />
             <LayerPanel
               layers={view.document.layers}
               selectedLayerId={view.selectedLayerId}
+              getAssetSource={(id) => controller?.getAssetSource(id)}
               onClose={() => setInspectorPanelOpen(false)}
+              onLayerStateChange={(id, changes) => controller?.updateLayerState(id, changes)}
               onReorder={(activeId, targetId) => controller?.reorderLayers(activeId, targetId)}
               onSelect={(id) => controller?.selectLayer(id)}
             />
