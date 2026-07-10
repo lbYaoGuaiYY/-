@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { createAssetId, createLayerId } from "../src/features/editor/editor-model"
 import {
+  migrateStoredProject,
   parseStoredLocalAsset,
   parseStoredProject,
   validateProjectSnapshot,
@@ -19,6 +20,8 @@ function validDocument() {
         id: createLayerId("layer-1"),
         assetId: builtInId,
         name: "花艺拱门",
+        visible: true,
+        locked: false,
         transform: {
           x: 600,
           y: 400,
@@ -38,7 +41,7 @@ describe("project format", () => {
   it("rejects non-finite transforms and out-of-range opacity", () => {
     const document = validDocument()
     const result = parseStoredProject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: 10,
       document: {
         ...document,
@@ -57,7 +60,7 @@ describe("project format", () => {
   it("parses a local asset Blob without reducing it to a blob URL", () => {
     const blob = new Blob(["image"], { type: "image/png" })
     const result = parseStoredLocalAsset({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: localId,
       name: "底图",
       mimeType: "image/png",
@@ -66,13 +69,13 @@ describe("project format", () => {
 
     expect(result).toEqual({
       kind: "valid",
-      value: { schemaVersion: 1, id: localId, name: "底图", mimeType: "image/png", blob },
+      value: { schemaVersion: 2, id: localId, name: "底图", mimeType: "image/png", blob },
     })
   })
 
   it("marks the whole project corrupt when one referenced local Blob is missing", () => {
     const projectResult = parseStoredProject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: 10,
       document: validDocument(),
     })
@@ -87,7 +90,7 @@ describe("project format", () => {
   it("marks the whole project corrupt when a built-in ID is unknown", () => {
     const document = validDocument()
     const projectResult = parseStoredProject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: 10,
       document: {
         ...document,
@@ -95,7 +98,7 @@ describe("project format", () => {
       },
     })
     const localAssetResult = parseStoredLocalAsset({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: localId,
       name: "底图",
       mimeType: "image/png",
@@ -110,5 +113,22 @@ describe("project format", () => {
     ).toEqual({
       kind: "corrupt",
     })
+  })
+
+  it("migrates legacy layers with visible and locked defaults", () => {
+    const document = validDocument()
+    const result = migrateStoredProject({
+      schemaVersion: 1,
+      updatedAt: 10,
+      document: {
+        ...document,
+        layers: document.layers.map(({ visible: _visible, locked: _locked, ...layer }) => layer),
+      },
+    })
+
+    expect(result.kind).toBe("valid")
+    if (result.kind !== "valid") return
+    expect(result.value.schemaVersion).toBe(2)
+    expect(result.value.document.layers[0]).toMatchObject({ visible: true, locked: false })
   })
 })

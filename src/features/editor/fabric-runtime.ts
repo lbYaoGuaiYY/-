@@ -17,6 +17,8 @@ export type { LayerDirection } from "./fabric-layer-order"
 type LayerMeta = {
   readonly assetId: ImageLayer["assetId"]
   readonly name: string
+  readonly visible: boolean
+  readonly locked: boolean
 }
 
 export class FabricRuntime {
@@ -109,7 +111,12 @@ export class FabricRuntime {
       },
       this.accentColor,
     )
-    this.registerLayer(image, id, { assetId: record.id, name: record.name })
+    this.registerLayer(image, id, {
+      assetId: record.id,
+      name: record.name,
+      visible: true,
+      locked: false,
+    })
     this.canvas.add(image)
     this.canvas.setActiveObject(image)
     this.canvas.requestRenderAll()
@@ -136,7 +143,12 @@ export class FabricRuntime {
       if (record !== undefined) {
         const image = await loadFabricImage(record)
         configureFabricImage(image, layer.transform, this.accentColor)
-        this.registerLayer(image, layer.id, { assetId: layer.assetId, name: layer.name })
+        this.registerLayer(image, layer.id, {
+          assetId: layer.assetId,
+          name: layer.name,
+          visible: layer.visible,
+          locked: layer.locked,
+        })
         this.canvas.add(image)
       }
     }

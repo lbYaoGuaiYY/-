@@ -1,8 +1,12 @@
+import Dexie, { type Table, type Transaction } from "dexie"
+
 import { DEMO_ASSETS } from "../assets/demo-assets"
 import { type AssetId, createAssetId } from "../editor/editor-model"
 import {
   ACTIVE_PROJECT_KEY,
   createStoredProject,
+  migrateStoredLocalAsset,
+  migrateStoredProject,
   type ProjectSnapshot,
   parseStoredLocalAsset,
   parseStoredProject,
@@ -11,7 +15,6 @@ import {
 import type { LoadProjectResult, ProjectStore, SaveProjectResult } from "./project-store"
 
 const DATABASE_NAME = "qingshe-projects-v1"
-const DATABASE_VERSION = 1
 const PROJECTS_STORE = "projects"
 const ASSETS_STORE = "assets"
 
@@ -19,27 +22,35 @@ const BUILT_IN_ASSET_IDS: ReadonlySet<AssetId> = new Set(
   DEMO_ASSETS.map((asset) => createAssetId(`built-in:${asset.id}`)),
 )
 
-class IndexedDbOperationError extends Error {
-  readonly name = "IndexedDbOperationError"
+class ProjectDatabase extends Dexie {
+  readonly projects!: Table<unknown, string>
+  readonly assets!: Table<unknown, string>
+
+  constructor() {
+    super(DATABASE_NAME)
+    this.version(0.1).stores({ projects: "", assets: "" })
+    this.version(0.2).stores({ projects: "", assets: "" }).upgrade(migrateDatabase)
+  }
+}
+
+class CorruptStoredRecordError extends Error {
+  readonly name = "CorruptStoredRecordError"
 }
 
 export class IndexedDbProjectStore implements ProjectStore {
   private persistenceRequested = false
 
   async load(): Promise<LoadProjectResult> {
-    let database: IDBDatabase | null = null
+    const database = new ProjectDatabase()
     try {
-      database = await openDatabase()
-      const transaction = database.transaction([PROJECTS_STORE, ASSETS_STORE], "readonly")
-      const completion = transactionCompletion(transaction)
+      await database.open()
       const [rawProject, rawAssets] = await Promise.all([
-        requestValue(transaction.objectStore(PROJECTS_STORE).get(ACTIVE_PROJECT_KEY)),
-        requestValue(transaction.objectStore(ASSETS_STORE).getAll()),
-        completion,
+        database.projects.get(ACTIVE_PROJECT_KEY),
+        database.assets.toArray(),
       ])
       if (rawProject === undefined) return { kind: "empty" }
       const project = parseStoredProject(rawProject)
-      if (project.kind === "corrupt" || !Array.isArray(rawAssets)) return { kind: "corrupt" }
+      if (project.kind === "corrupt") return { kind: "corrupt" }
 
       const localAssets = []
       for (const rawAsset of rawAssets) {
@@ -51,11 +62,10 @@ export class IndexedDbProjectStore implements ProjectStore {
       return validation.kind === "valid"
         ? { kind: "loaded", snapshot: validation.value }
         : { kind: "corrupt" }
-    } catch (error) {
-      if (error instanceof Error) return { kind: "error" }
+    } catch {
       return { kind: "error" }
     } finally {
-      database?.close()
+      database.close()
     }
   }
 
@@ -64,18 +74,16 @@ export class IndexedDbProjectStore implements ProjectStore {
     const validation = validateProjectSnapshot(project, snapshot.localAssets, BUILT_IN_ASSET_IDS)
     if (validation.kind === "corrupt") return { kind: "error" }
 
-    let database: IDBDatabase | null = null
+    const database = new ProjectDatabase()
     try {
-      database = await openDatabase()
+      await database.open()
       await writeSnapshot(database, project, validation.value)
       this.requestPersistenceOnce()
       return { kind: "saved" }
     } catch (error) {
-      if (isQuotaExceeded(error)) return { kind: "quota_exceeded" }
-      if (error instanceof Error) return { kind: "error" }
-      return { kind: "error" }
+      return isQuotaExceeded(error) ? { kind: "quota_exceeded" } : { kind: "error" }
     } finally {
-      database?.close()
+      database.close()
     }
   }
 
@@ -89,65 +97,44 @@ export class IndexedDbProjectStore implements ProjectStore {
   }
 }
 
+async function migrateDatabase(transaction: Transaction): Promise<void> {
+  await transaction
+    .table<unknown, string>(PROJECTS_STORE)
+    .toCollection()
+    .modify((value, context) => {
+      const migrated = migrateStoredProject(value)
+      if (migrated.kind === "corrupt") throw new CorruptStoredRecordError("项目记录无法迁移")
+      context.value = migrated.value
+    })
+  await transaction
+    .table<unknown, string>(ASSETS_STORE)
+    .toCollection()
+    .modify((value, context) => {
+      const migrated = migrateStoredLocalAsset(value)
+      if (migrated.kind === "corrupt") throw new CorruptStoredRecordError("素材记录无法迁移")
+      context.value = migrated.value
+    })
+}
+
 async function writeSnapshot(
-  database: IDBDatabase,
+  database: ProjectDatabase,
   project: ReturnType<typeof createStoredProject>,
   snapshot: ProjectSnapshot,
 ): Promise<void> {
-  const transaction = database.transaction([PROJECTS_STORE, ASSETS_STORE], "readwrite", {
-    durability: "strict",
+  await database.transaction("rw", database.projects, database.assets, async () => {
+    const existingKeys = await database.assets.toCollection().primaryKeys()
+    const retainedIds = new Set(snapshot.localAssets.map((asset) => String(asset.id)))
+    await database.projects.put(project, ACTIVE_PROJECT_KEY)
+    for (const asset of snapshot.localAssets) await database.assets.put(asset, String(asset.id))
+    await database.assets.bulkDelete(
+      existingKeys.filter((key) => typeof key !== "string" || !retainedIds.has(key)),
+    )
   })
-  const completion = transactionCompletion(transaction)
-  const projectStore = transaction.objectStore(PROJECTS_STORE)
-  const assetStore = transaction.objectStore(ASSETS_STORE)
-  const existingKeys = await requestValue(assetStore.getAllKeys())
-  const retainedIds = new Set(snapshot.localAssets.map((asset) => String(asset.id)))
-
-  projectStore.put(project, ACTIVE_PROJECT_KEY)
-  for (const asset of snapshot.localAssets) assetStore.put(asset, asset.id)
-  for (const key of existingKeys) {
-    if (typeof key !== "string" || !retainedIds.has(key)) assetStore.delete(key)
-  }
-  await completion
-}
-
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION)
-    request.onupgradeneeded = () => {
-      const database = request.result
-      if (!database.objectStoreNames.contains(PROJECTS_STORE))
-        database.createObjectStore(PROJECTS_STORE)
-      if (!database.objectStoreNames.contains(ASSETS_STORE))
-        database.createObjectStore(ASSETS_STORE)
-    }
-    request.onerror = () => reject(operationError("无法打开项目数据库", request.error))
-    request.onblocked = () => reject(new IndexedDbOperationError("项目数据库升级被阻止"))
-    request.onsuccess = () => resolve(request.result)
-  })
-}
-
-function requestValue<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onerror = () => reject(operationError("项目数据库请求失败", request.error))
-    request.onsuccess = () => resolve(request.result)
-  })
-}
-
-function transactionCompletion(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.oncomplete = () => resolve()
-    transaction.onerror = () => reject(operationError("项目事务失败", transaction.error))
-    transaction.onabort = () => reject(operationError("项目事务已回滚", transaction.error))
-  })
-}
-
-function operationError(message: string, cause: DOMException | null): IndexedDbOperationError {
-  return new IndexedDbOperationError(message, cause === null ? undefined : { cause })
 }
 
 function isQuotaExceeded(error: unknown): boolean {
-  if (error instanceof DOMException) return error.name === "QuotaExceededError"
   if (!(error instanceof Error)) return false
-  return error.cause instanceof DOMException && error.cause.name === "QuotaExceededError"
+  if (error.name === "QuotaExceededError") return true
+  if ("inner" in error && isQuotaExceeded(error.inner)) return true
+  return "cause" in error && isQuotaExceeded(error.cause)
 }

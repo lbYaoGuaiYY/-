@@ -26,6 +26,8 @@ export type ImageLayer = {
   readonly id: LayerId
   readonly assetId: AssetId
   readonly name: string
+  readonly visible: boolean
+  readonly locked: boolean
   readonly transform: LayerTransform
 }
 
@@ -57,6 +59,8 @@ export const ImageLayerSchema = z.object({
   id: LayerIdSchema,
   assetId: AssetIdSchema,
   name: z.string().trim().min(1),
+  visible: z.boolean(),
+  locked: z.boolean(),
   transform: LayerTransformSchema,
 })
 
