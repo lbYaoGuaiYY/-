@@ -5,7 +5,7 @@
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1279px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -18,9 +18,12 @@
     width: min(360px, 78vw);
     transform: translateX(-105%);
     opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
     transition:
       transform var(--duration-panel) ease-in-out,
-      opacity var(--duration-panel) ease-in-out;
+      opacity var(--duration-panel) ease-in-out,
+      visibility 0s linear var(--duration-panel);
   }
 
   .side-panel-left {
@@ -35,6 +38,9 @@
   .side-panel.is-open {
     transform: translateX(0);
     opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
   }
 
   .mobile-panel-close {
@@ -50,12 +56,18 @@
   .numeric-input {
     min-height: 44px;
   }
+
+  .layer-drag-handle,
+  .layer-state-button {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 @media (max-width: 699px) {
   :root {
     --header-height: 52px;
-    --status-height: 56px;
+    --status-height: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
   .app-header {
@@ -74,10 +86,23 @@
     padding: 0;
   }
 
+  .header-actions .primary-button span,
+  .project-durability-warning {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .mobile-tabbar {
     display: grid;
     height: 100%;
     grid-template-columns: repeat(4, 1fr);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .mobile-tabbar .icon-button {

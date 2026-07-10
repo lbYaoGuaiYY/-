@@ -156,6 +156,33 @@ test("shows layer thumbnails and enforces visibility and lock state", async ({ p
   )
 })
 
+test("routes phone assets, layers, and properties to distinct panels", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/")
+  await setImageInput(page)
+
+  await page.getByRole("button", { name: "素材", exact: true }).click()
+  const assetPanel = page.locator(".side-panel-left")
+  await expect(assetPanel).toHaveClass(/is-open/)
+  await page.getByTestId("asset-card-floral-arch").click()
+  await expect(assetPanel).not.toHaveClass(/is-open/)
+
+  await page.getByRole("button", { name: "图层", exact: true }).click()
+  const rightPanel = page.locator(".side-panel-right")
+  await expect(rightPanel).toHaveAttribute("data-panel-mode", "layers")
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(1)
+  await expect(page.getByRole("heading", { name: /图层/ })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "属性", exact: true })).toHaveCount(0)
+
+  await page.getByRole("button", { name: "属性", exact: true }).click()
+  await expect(rightPanel).toHaveAttribute("data-panel-mode", "properties")
+  await expect(page.getByRole("heading", { name: "属性", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /图层/ })).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+})
+
 async function setImageInput(page: Page): Promise<void> {
   await page.getByTestId("background-file-input").evaluate(async (element) => {
     if (!(element instanceof HTMLInputElement))

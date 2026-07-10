@@ -370,7 +370,7 @@
   background: var(--status-success);
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1280px) {
   .workspace.assets-closed {
     grid-template-columns: minmax(0, 1fr) var(--right-panel-width);
   }
@@ -378,9 +378,21 @@
   .workspace.assets-closed > .side-panel-left {
     display: none;
   }
+
+  .workspace.right-closed {
+    grid-template-columns: var(--left-panel-width) minmax(0, 1fr);
+  }
+
+  .workspace.right-closed > .side-panel-right {
+    display: none;
+  }
+
+  .workspace.assets-closed.right-closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1279px) {
   .error-banner {
     right: var(--space-3);
   }

@@ -28,6 +28,7 @@ export type EditorDragContextProps = {
   readonly canvasSize: CanvasSize
   readonly children: ReactNode
   readonly controller: EditorController | null
+  readonly onAssetDragStart: (() => void) | undefined
   readonly onRequestBackground: () => void
 }
 
@@ -36,6 +37,7 @@ export function EditorDragContext({
   canvasSize,
   children,
   controller,
+  onAssetDragStart,
   onRequestBackground,
 }: EditorDragContextProps) {
   const [activeAsset, setActiveAsset] = useState<DemoAsset | null>(null)
@@ -46,7 +48,9 @@ export function EditorDragContext({
   )
 
   function handleDragStart(event: DragStartEvent): void {
-    setActiveAsset(findDemoAssetFromDragData(event.active.data.current))
+    const asset = findDemoAssetFromDragData(event.active.data.current)
+    setActiveAsset(asset)
+    if (asset !== null) onAssetDragStart?.()
   }
 
   function handleDragEnd(event: DragEndEvent): void {

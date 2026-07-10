@@ -1,4 +1,4 @@
-import { DownloadSimple, Images, SlidersHorizontal, Stack, X } from "@phosphor-icons/react"
+import { X } from "@phosphor-icons/react"
 import type { ChangeEvent } from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -12,12 +12,14 @@ import type { EditorController } from "./features/editor/editor-controller"
 import type { EditorViewState } from "./features/editor/editor-view-state"
 import { InspectorPanel } from "./features/editor/InspectorPanel"
 import { LayerPanel } from "./features/editor/LayerPanel"
+import { MobileTabbar } from "./features/editor/MobileTabbar"
 import {
   EDITOR_SHORTCUT,
   type EditorShortcut,
   isEditorTextTarget,
   resolveEditorShortcut,
 } from "./features/editor/shortcuts"
+import { useEditorPanels } from "./features/editor/use-editor-panels"
 import { useProjectSession } from "./features/projects/use-project-session"
 
 const FALLBACK_VIEW = {
@@ -37,10 +39,7 @@ class UnexpectedShortcutError extends Error {
 export function App() {
   const [controller, setController] = useState<EditorController | null>(null)
   const [view, setView] = useState<EditorViewState>(FALLBACK_VIEW)
-  const [assetPanelOpen, setAssetPanelOpen] = useState(
-    () => window.matchMedia("(min-width: 900px)").matches,
-  )
-  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false)
+  const panels = useEditorPanels()
   const backgroundInputRef = useRef<HTMLInputElement>(null)
   const projectSession = useProjectSession(controller)
 
@@ -64,6 +63,11 @@ export function App() {
         runShortcut(activeController, shortcut)
         return
       }
+      if (shouldTogglePanels(event)) {
+        event.preventDefault()
+        panels.toggleTemporary()
+        return
+      }
       if (isEditorTextTarget(event.target)) return
       const step = event.shiftKey ? 10 : 1
       if (event.key === "ArrowLeft") activeController.nudgeSelection(-step, 0)
@@ -74,16 +78,14 @@ export function App() {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [controller])
+  }, [controller, panels])
 
   const backgroundLoaded = view.document.backgroundAssetId !== null
   const selectedLayer =
     view.document.layers.find((layer) => layer.id === view.selectedLayerId) ?? null
   const selectionEditable = selectedLayer?.visible === true && !selectedLayer.locked
 
-  function requestBackground(): void {
-    backgroundInputRef.current?.click()
-  }
+  const requestBackground = (): void => backgroundInputRef.current?.click()
 
   function handleBackgroundFile(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.currentTarget.files?.item(0)
@@ -94,8 +96,15 @@ export function App() {
   }
 
   function addBuiltInAsset(asset: DemoAsset): void {
-    if (controller !== null) void controller.addBuiltInAsset(asset)
+    if (controller === null) return
+    void controller.addBuiltInAsset(asset).then(() => {
+      if (panels.viewport !== "desktop") panels.closeAssets()
+    })
   }
+
+  const workspaceClassName = `workspace${panels.assetsOpen ? "" : " assets-closed"}${panels.rightPanel === "closed" ? " right-closed" : ""}`
+  const showProperties = panels.viewport === "desktop" || panels.rightPanel === "properties"
+  const showLayers = panels.viewport === "desktop" || panels.rightPanel === "layers"
 
   return (
     <main className="app-shell" data-testid="editor-shell">
@@ -126,10 +135,11 @@ export function App() {
         backgroundLoaded={backgroundLoaded}
         canvasSize={view.document.canvasSize}
         controller={controller}
+        onAssetDragStart={panels.viewport === "desktop" ? undefined : panels.closeAssets}
         onRequestBackground={requestBackground}
       >
-        <div className={`workspace${assetPanelOpen ? "" : " assets-closed"}`}>
-          <div className={`side-panel side-panel-left${assetPanelOpen ? " is-open" : ""}`}>
+        <div className={workspaceClassName}>
+          <div className={`side-panel side-panel-left${panels.assetsOpen ? " is-open" : ""}`}>
             <AssetPanel
               onAddAsset={addBuiltInAsset}
               onImportFiles={(files) => void controller?.addLocalAssets(files)}
@@ -138,7 +148,7 @@ export function App() {
           <section className="canvas-column" aria-label="编辑区">
             <EditorToolbar
               hasSelection={selectionEditable}
-              onToggleAssets={() => setAssetPanelOpen((open) => !open)}
+              onToggleAssets={panels.toggleAssets}
               onMoveLayer={(direction) => controller?.moveSelection(direction)}
               onDelete={() => controller?.deleteSelection()}
             />
@@ -149,24 +159,31 @@ export function App() {
             />
           </section>
           <aside
-            className={`side-panel side-panel-right${inspectorPanelOpen ? " is-open" : ""}`}
+            className={`side-panel side-panel-right${panels.rightPanel === "closed" ? "" : " is-open"}`}
+            data-panel-mode={panels.rightPanel}
             aria-label="属性与图层"
           >
-            <InspectorPanel
-              layer={selectedLayer}
-              readOnly={selectedLayer !== null && (!selectedLayer.visible || selectedLayer.locked)}
-              onClose={() => setInspectorPanelOpen(false)}
-              onUpdate={(transform) => controller?.updateSelection(transform)}
-            />
-            <LayerPanel
-              layers={view.document.layers}
-              selectedLayerId={view.selectedLayerId}
-              getAssetSource={(id) => controller?.getAssetSource(id)}
-              onClose={() => setInspectorPanelOpen(false)}
-              onLayerStateChange={(id, changes) => controller?.updateLayerState(id, changes)}
-              onReorder={(activeId, targetId) => controller?.reorderLayers(activeId, targetId)}
-              onSelect={(id) => controller?.selectLayer(id)}
-            />
+            {showProperties && (
+              <InspectorPanel
+                layer={selectedLayer}
+                readOnly={
+                  selectedLayer !== null && (!selectedLayer.visible || selectedLayer.locked)
+                }
+                onClose={panels.closeRightPanel}
+                onUpdate={(transform) => controller?.updateSelection(transform)}
+              />
+            )}
+            {showLayers && (
+              <LayerPanel
+                layers={view.document.layers}
+                selectedLayerId={view.selectedLayerId}
+                getAssetSource={(id) => controller?.getAssetSource(id)}
+                onClose={panels.closeRightPanel}
+                onLayerStateChange={(id, changes) => controller?.updateLayerState(id, changes)}
+                onReorder={(activeId, targetId) => controller?.reorderLayers(activeId, targetId)}
+                onSelect={(id) => controller?.selectLayer(id)}
+              />
+            )}
           </aside>
         </div>
       </EditorDragContext>
@@ -193,38 +210,22 @@ export function App() {
           <span>{view.document.layers.length} 个素材</span>
           <span>{view.zoomPercent}%</span>
         </div>
-        <nav className="mobile-tabbar" aria-label="移动端面板">
-          <MobileTab icon="assets" label="素材" onClick={() => setAssetPanelOpen(true)} />
-          <MobileTab icon="layers" label="图层" onClick={() => setInspectorPanelOpen(true)} />
-          <MobileTab icon="properties" label="属性" onClick={() => setInspectorPanelOpen(true)} />
-          <MobileTab icon="export" label="导出" onClick={() => void controller?.downloadPng()} />
-        </nav>
+        <MobileTabbar
+          activePanel={
+            panels.assetsOpen
+              ? "assets"
+              : panels.rightPanel === "layers" || panels.rightPanel === "properties"
+                ? panels.rightPanel
+                : null
+          }
+          onOpenAssets={panels.openAssets}
+          onOpenLayers={() => panels.openRightPanel("layers")}
+          onOpenProperties={() => panels.openRightPanel("properties")}
+          onExport={() => void projectSession.flush().then(() => controller?.downloadPng())}
+        />
       </footer>
     </main>
   )
-}
-
-type MobileTabProps = {
-  readonly icon: "assets" | "layers" | "properties" | "export"
-  readonly label: string
-  readonly onClick: () => void
-}
-
-function MobileTab({ icon, label, onClick }: MobileTabProps) {
-  const iconElement = mobileTabIcon(icon)
-  return (
-    <button className="icon-button" type="button" onClick={onClick}>
-      {iconElement}
-      <span>{label}</span>
-    </button>
-  )
-}
-
-function mobileTabIcon(icon: MobileTabProps["icon"]) {
-  if (icon === "assets") return <Images size={18} aria-hidden="true" />
-  if (icon === "layers") return <Stack size={18} aria-hidden="true" />
-  if (icon === "properties") return <SlidersHorizontal size={18} aria-hidden="true" />
-  return <DownloadSimple size={18} aria-hidden="true" />
 }
 
 function runShortcut(controller: EditorController, shortcut: EditorShortcut): void {
@@ -253,4 +254,11 @@ function runShortcut(controller: EditorController, shortcut: EditorShortcut): vo
     default:
       throw new UnexpectedShortcutError(`Unexpected shortcut: ${String(shortcut)}`)
   }
+}
+
+function shouldTogglePanels(event: KeyboardEvent): boolean {
+  if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return false
+  const target = event.target
+  if (!(target instanceof HTMLElement)) return true
+  return target.closest("button, a, input, select, textarea, [contenteditable='true']") === null
 }
