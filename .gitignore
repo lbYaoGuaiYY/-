@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+outputs/
+.omo/evidence/
+.omo/start-work/
+.omo/boulder.json
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,152 @@
+.app-shell {
+  display: grid;
+  grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
+  width: 100vw;
+  min-height: 100dvh;
+  background: var(--surface-app);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-app);
+}
+
+.brand-block,
+.header-actions,
+.toolbar-group,
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brand-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-control);
+  color: var(--accent-hover);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.brand-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 20px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: var(--left-panel-width) minmax(0, 1fr) var(--right-panel-width);
+  min-height: 0;
+}
+
+.side-panel {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+.side-panel-left {
+  border-right: 1px solid var(--border-default);
+}
+
+.side-panel-right {
+  display: grid;
+  grid-template-rows: minmax(220px, 0.9fr) minmax(220px, 1.1fr);
+  border-left: 1px solid var(--border-default);
+}
+
+.panel-section {
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel-section + .panel-section {
+  border-top: 1px solid var(--border-default);
+}
+
+.canvas-column {
+  display: grid;
+  grid-template-rows: var(--toolbar-height) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.context-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  background-color: var(--surface-stage);
+  background-image:
+    linear-gradient(45deg, var(--surface-app) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface-app) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface-app) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface-app) 75%);
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.canvas-host {
+  position: relative;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  background: var(--canvas-white);
+}
+
+.canvas-host canvas {
+  display: block;
+}
+
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: var(--surface-stage);
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-app);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.mobile-tabbar,
+.mobile-panel-close {
+  display: none;
+}

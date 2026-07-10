@@ -1,0 +1,4 @@
+allowBuilds:
+  canvas: false
+minimumReleaseAgeExclude:
+  - vite@8.1.4

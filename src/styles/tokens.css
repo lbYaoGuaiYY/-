@@ -1,0 +1,92 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --surface-app: #111318;
+  --surface-stage: #15181d;
+  --surface-panel: #1c2026;
+  --surface-control: #252a32;
+  --surface-hover: #2d333d;
+  --surface-selected: #303b4d;
+  --canvas-white: #ffffff;
+  --border-default: #303640;
+  --border-strong: #424a56;
+  --text-primary: #f0f2f5;
+  --text-secondary: #aab1bc;
+  --text-muted: #a0a8b3;
+  --accent-primary: #5b8def;
+  --accent-hover: #73a0f5;
+  --accent-strong: #416fce;
+  --accent-strong-hover: #365fb8;
+  --status-success: #45c98a;
+  --status-warning: #e7b657;
+  --status-error: #ed6b72;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --header-height: 48px;
+  --toolbar-height: 40px;
+  --status-height: 28px;
+  --left-panel-width: 272px;
+  --right-panel-width: 288px;
+  --radius-control: 4px;
+  --radius-menu: 6px;
+  --duration-micro: 120ms;
+  --duration-panel: 160ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

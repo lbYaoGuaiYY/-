@@ -1,0 +1,48 @@
+{
+  "name": "qingshe-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.11.0",
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "canvas"
+    ]
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "verify": "pnpm typecheck && pnpm test && pnpm check && pnpm build && pnpm test:e2e"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "2.1.10",
+    "fabric": "7.4.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@biomejs/biome": "^2.5.3",
+    "@playwright/test": "^1.61.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^29.1.1",
+    "react-grab": "^0.1.48",
+    "react-scan": "^0.5.7",
+    "typescript": "^7.0.2",
+    "vite": "8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

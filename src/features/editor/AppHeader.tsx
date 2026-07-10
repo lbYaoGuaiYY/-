@@ -1,0 +1,108 @@
+import {
+  ArrowClockwise,
+  ArrowCounterClockwise,
+  DownloadSimple,
+  ImageSquare,
+} from "@phosphor-icons/react"
+import type { ProjectSessionStatus } from "../projects/use-project-session"
+
+export type AppHeaderProps = {
+  readonly canRedo: boolean
+  readonly canUndo: boolean
+  readonly canExport: boolean
+  readonly isBusy: boolean
+  readonly projectStatus: ProjectSessionStatus
+  readonly onExport: () => void
+  readonly onRequestBackground: () => void
+  readonly onRedo: () => void
+  readonly onUndo: () => void
+}
+
+export function AppHeader({
+  canRedo,
+  canUndo,
+  canExport,
+  isBusy,
+  projectStatus,
+  onExport,
+  onRequestBackground,
+  onRedo,
+  onUndo,
+}: AppHeaderProps) {
+  return (
+    <header className="app-header">
+      <div className="brand-block">
+        <span className="brand-mark" aria-hidden="true">
+          轻
+        </span>
+        <h1 className="brand-name">轻设</h1>
+        <span className="document-name desktop-only">未命名设计</span>
+        <span
+          className="project-save-status"
+          data-kind={projectStatus.kind}
+          role="status"
+          aria-label="项目保存状态"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {projectStatusLabel(projectStatus)}
+        </span>
+      </div>
+      <div className="header-actions">
+        <button
+          className="text-button"
+          type="button"
+          aria-label="导入底图"
+          onClick={onRequestBackground}
+        >
+          <ImageSquare size={16} aria-hidden="true" />
+          <span className="desktop-only">导入底图</span>
+        </button>
+        <span className="header-divider" aria-hidden="true" />
+        <button
+          className="icon-button"
+          type="button"
+          aria-label="撤销"
+          disabled={!canUndo || isBusy}
+          onClick={onUndo}
+        >
+          <ArrowCounterClockwise size={17} aria-hidden="true" />
+        </button>
+        <button
+          className="icon-button"
+          type="button"
+          aria-label="重做"
+          disabled={!canRedo || isBusy}
+          onClick={onRedo}
+        >
+          <ArrowClockwise size={17} aria-hidden="true" />
+        </button>
+        <button
+          className="primary-button"
+          type="button"
+          aria-label="导出 PNG"
+          disabled={!canExport || isBusy}
+          onClick={onExport}
+        >
+          <DownloadSimple size={16} weight="bold" aria-hidden="true" />
+          <span>导出 PNG</span>
+        </button>
+      </div>
+    </header>
+  )
+}
+
+function projectStatusLabel(status: ProjectSessionStatus): string {
+  switch (status.kind) {
+    case "idle":
+      return ""
+    case "saving":
+      return "保存中…"
+    case "saved":
+      return "已自动保存"
+    case "save_failed":
+      return "保存失败"
+    case "restore_failed":
+      return "恢复失败"
+  }
+}
