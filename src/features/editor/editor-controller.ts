@@ -22,6 +22,7 @@ import {
   undoHistory,
 } from "./history-store"
 import { imageResultMessage, validateImageFile } from "./image-import"
+import { reorderLayersFromPanel } from "./layer-order"
 
 export class EditorController {
   private readonly runtime: FabricRuntime
@@ -133,6 +134,12 @@ export class EditorController {
 
   moveSelection(direction: LayerDirection): void {
     if (this.runtime.moveSelection(direction)) this.commitRuntimeLayers()
+  }
+
+  reorderLayers(activeId: LayerId, targetId: LayerId): void {
+    const order = this.history.present.layers.map((layer) => layer.id)
+    const reordered = reorderLayersFromPanel(order, activeId, targetId)
+    if (reordered !== order && this.runtime.reorderLayers(reordered)) this.commitRuntimeLayers()
   }
 
   updateSelection(transform: Partial<LayerTransform>): void {

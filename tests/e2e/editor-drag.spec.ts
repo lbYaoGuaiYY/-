@@ -97,6 +97,36 @@ test("keeps touch scrolling usable and supports long-press placement", async ({ 
   await client.detach()
 })
 
+test("reorders layers from the panel and round-trips undo", async ({ page }) => {
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(1)
+  await page.getByTestId("asset-card-flower-column").click()
+  await expect(page.getByTestId("layer-item-flower-column")).toHaveCount(1)
+  await page.getByTestId("asset-card-welcome-sign").click()
+  await expect(page.getByTestId("layer-item-welcome-sign")).toHaveCount(1)
+  const rows = page.getByTestId("layer-list").locator(":scope > li")
+  await expect(rows).toHaveText([/木质迎宾牌/, /柔粉花柱/, /奶油花艺拱门/])
+
+  const sourceBox = await page.getByTestId("layer-sort-handle-floral-arch").boundingBox()
+  const targetBox = await page.getByTestId("layer-item-welcome-sign").boundingBox()
+  if (sourceBox === null || targetBox === null)
+    throw new Error("Layer sort targets must be visible")
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 10,
+  })
+  await page.mouse.up()
+
+  await expect(rows).toHaveText([/奶油花艺拱门/, /木质迎宾牌/, /柔粉花柱/])
+  await page.getByRole("button", { name: "撤销" }).click()
+  await expect(rows).toHaveText([/木质迎宾牌/, /柔粉花柱/, /奶油花艺拱门/])
+  await page.getByRole("button", { name: "重做" }).click()
+  await expect(rows).toHaveText([/奶油花艺拱门/, /木质迎宾牌/, /柔粉花柱/])
+})
+
 async function setImageInput(page: Page): Promise<void> {
   await page.getByTestId("background-file-input").evaluate(async (element) => {
     if (!(element instanceof HTMLInputElement))

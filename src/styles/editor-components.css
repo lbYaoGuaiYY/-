@@ -258,6 +258,30 @@
   text-align: left;
 }
 
+.layer-drag-handle {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.layer-drag-handle:hover,
+.layer-drag-handle:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.layer-drag-handle:active {
+  cursor: grabbing;
+}
+
 .error-banner {
   position: fixed;
   z-index: 50;

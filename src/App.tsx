@@ -160,6 +160,7 @@ export function App() {
               layers={view.document.layers}
               selectedLayerId={view.selectedLayerId}
               onClose={() => setInspectorPanelOpen(false)}
+              onReorder={(activeId, targetId) => controller?.reorderLayers(activeId, targetId)}
               onSelect={(id) => controller?.selectLayer(id)}
             />
           </aside>

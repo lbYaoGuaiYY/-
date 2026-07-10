@@ -10,20 +10,13 @@ import type {
   LayerTransform,
 } from "./editor-model"
 import { configureFabricImage, loadFabricImage, readFabricTransform } from "./fabric-image"
+import { type LayerDirection, moveFabricSelection, reorderFabricLayers } from "./fabric-layer-order"
 
-export type LayerDirection = "up" | "down" | "front" | "back"
+export type { LayerDirection } from "./fabric-layer-order"
 
 type LayerMeta = {
   readonly assetId: ImageLayer["assetId"]
   readonly name: string
-}
-
-class UnexpectedLayerDirectionError extends Error {
-  readonly name = "UnexpectedLayerDirectionError"
-}
-
-function assertNeverDirection(direction: never): never {
-  throw new UnexpectedLayerDirectionError(`Unexpected layer direction: ${String(direction)}`)
 }
 
 export class FabricRuntime {
@@ -193,20 +186,11 @@ export class FabricRuntime {
   }
 
   moveSelection(direction: LayerDirection): boolean {
-    const object = this.canvas.getActiveObject()
-    if (object === undefined) return false
-    switch (direction) {
-      case "up":
-        return this.canvas.bringObjectForward(object)
-      case "down":
-        return this.canvas.sendObjectBackwards(object)
-      case "front":
-        return this.canvas.moveObjectTo(object, this.canvas.getObjects().length - 1)
-      case "back":
-        return this.canvas.moveObjectTo(object, 0)
-      default:
-        return assertNeverDirection(direction)
-    }
+    return moveFabricSelection(this.canvas, direction)
+  }
+
+  reorderLayers(order: readonly LayerId[]): boolean {
+    return reorderFabricLayers(this.canvas, this.layerObjects, order)
   }
 
   updateSelection(transform: Partial<LayerTransform>): boolean {
