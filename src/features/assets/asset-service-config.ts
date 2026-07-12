@@ -1,6 +1,7 @@
 const DEFAULT_ASSET_SERVICE_URL = "http://127.0.0.1:7000"
 
 export type AssetServiceEnvironment = {
+  readonly VITE_APP_ENV?: string | undefined
   readonly VITE_APP_SURFACE?: string | undefined
   readonly VITE_ASSET_ADMIN_SERVICE_URL?: string | undefined
   readonly VITE_ASSET_EDITOR_TOKEN?: string | undefined
@@ -28,11 +29,15 @@ export function createAssetServiceConfig(
   )?.trim()
   const configuredToken =
     surface === "editor" ? environment.VITE_ASSET_EDITOR_TOKEN?.trim() : undefined
-  return {
+  const config = {
     baseUrl: (configuredUrl || DEFAULT_ASSET_SERVICE_URL).replace(/\/+$/, ""),
     editorToken: configuredToken || null,
     eventsEnabled: surface === "admin",
   }
+  if (surface === "editor" && environment.VITE_APP_ENV === "production") {
+    assertProductionEditorEndpoint(config.baseUrl)
+  }
+  return config
 }
 
 export function createAssetServiceHeaders(
@@ -61,6 +66,7 @@ const currentSurface: AssetServiceSurface =
     : "editor"
 
 const importEnvironment: AssetServiceEnvironment = {
+  VITE_APP_ENV: import.meta.env.VITE_APP_ENV,
   VITE_APP_SURFACE: import.meta.env.VITE_APP_SURFACE,
   VITE_ASSET_ADMIN_SERVICE_URL: import.meta.env.VITE_ASSET_ADMIN_SERVICE_URL,
   VITE_ASSET_EDITOR_TOKEN: import.meta.env.VITE_ASSET_EDITOR_TOKEN,
@@ -69,3 +75,15 @@ const importEnvironment: AssetServiceEnvironment = {
 }
 
 export const ASSET_SERVICE_CONFIG = createAssetServiceConfig(importEnvironment, currentSurface)
+
+function assertProductionEditorEndpoint(baseUrl: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(baseUrl)
+  } catch {
+    throw new Error("生产构建必须配置可访问的素材服务地址")
+  }
+  if (["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"].includes(parsed.hostname)) {
+    throw new Error("生产构建必须配置可访问的素材服务地址")
+  }
+}

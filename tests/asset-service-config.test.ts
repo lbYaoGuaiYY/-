@@ -51,4 +51,22 @@ describe("asset service configuration", () => {
     // Then: local processing completion still refreshes the catalog automatically.
     expect(config.eventsEnabled).toBe(true)
   })
+
+  it("rejects a loopback editor endpoint in production", () => {
+    expect(() =>
+      createAssetServiceConfig({
+        VITE_APP_ENV: "production",
+        VITE_ASSET_SERVICE_URL: "http://127.0.0.1:7000",
+      }),
+    ).toThrow("生产构建必须配置可访问的素材服务地址")
+  })
+
+  it("allows an explicitly configured LAN editor endpoint in production", () => {
+    const config = createAssetServiceConfig({
+      VITE_APP_ENV: "production",
+      VITE_ASSET_SERVICE_URL: "http://192.168.1.20:7000/api/v1",
+    })
+
+    expect(config.baseUrl).toBe("http://192.168.1.20:7000/api/v1")
+  })
 })
