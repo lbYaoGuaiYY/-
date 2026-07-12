@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { createAssetId } from "../src/features/editor/editor-model"
 import {
@@ -8,6 +8,7 @@ import {
 import {
   decodeProjectPackage,
   encodeProjectPackage,
+  shareOrDownloadProjectPackage,
 } from "../src/features/projects/project-package"
 
 describe("editable project package", () => {
@@ -64,5 +65,45 @@ describe("editable project package", () => {
 
     // Then invalid editable data is refused instead of producing a broken backup
     expect(result).toBeNull()
+  })
+
+  it("falls back to a browser download when mobile sharing is unavailable", async () => {
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined })
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: undefined })
+
+    const result = await shareOrDownloadProjectPackage(
+      new Blob(["zip"], { type: "application/zip" }),
+      "项目.qingshe",
+    )
+
+    expect(result).toBe("downloaded")
+    expect(anchorClick).toHaveBeenCalledOnce()
+    anchorClick.mockRestore()
+  })
+
+  it("falls back to a browser download when mobile sharing is rejected", async () => {
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: vi.fn().mockRejectedValue(new Error("cancelled")),
+    })
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: vi.fn().mockReturnValue(true),
+    })
+
+    const result = await shareOrDownloadProjectPackage(
+      new Blob(["zip"], { type: "application/zip" }),
+      "项目.qingshe",
+    )
+
+    expect(result).toBe("downloaded")
+    expect(anchorClick).toHaveBeenCalledOnce()
+    anchorClick.mockRestore()
   })
 })

@@ -2,6 +2,7 @@ import { open, save } from "@tauri-apps/plugin-dialog"
 import { readFile, writeFile } from "@tauri-apps/plugin-fs"
 
 import { projectPackageFilename } from "./project-package"
+import { isDesktopRuntime } from "./tauri-runtime"
 
 const PROJECT_PACKAGE_FILTER = [{ name: "轻设可编辑项目", extensions: ["qingshe"] }]
 export const IMAGE_FILE_FILTER = {
@@ -12,6 +13,7 @@ export const IMAGE_FILE_FILTER = {
 export type SaveProjectPackageResult = "saved" | "cancelled"
 
 export async function openProjectPackageFile(): Promise<File | null> {
+  if (!isDesktopRuntime()) return null
   const selectedPath = await open({
     multiple: false,
     directory: false,
@@ -23,6 +25,7 @@ export async function openProjectPackageFile(): Promise<File | null> {
 }
 
 export async function openBackgroundImageFile(): Promise<File | null> {
+  if (!isDesktopRuntime()) return null
   const selectedPath = await open({
     multiple: false,
     directory: false,
@@ -37,6 +40,7 @@ export async function saveProjectPackageFile(
   packageBlob: Blob,
   projectName: string,
 ): Promise<SaveProjectPackageResult> {
+  if (!isDesktopRuntime()) return "cancelled"
   const selectedPath = await save({
     defaultPath: projectPackageFilename(projectName),
     filters: PROJECT_PACKAGE_FILTER,

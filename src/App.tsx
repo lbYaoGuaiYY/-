@@ -37,8 +37,9 @@ import {
 import type { ProjectId } from "./features/projects/project-format"
 import {
   decodeProjectPackage,
-  downloadProjectPackage,
   encodeProjectPackage,
+  projectPackageFilename,
+  shareOrDownloadProjectPackage,
 } from "./features/projects/project-package"
 import { isDesktopRuntime } from "./features/projects/project-storage"
 import { useProjectMetadata } from "./features/projects/use-project-metadata"
@@ -308,7 +309,11 @@ export function App({ projectId }: AppProps) {
         const packageBlob = await encodeProjectPackage(snapshot, projectMetadata.name)
         await saveProjectPackageFile(packageBlob, projectMetadata.name)
       } else {
-        await downloadProjectPackage(snapshot, projectMetadata.name)
+        const packageBlob = await encodeProjectPackage(snapshot, projectMetadata.name)
+        await shareOrDownloadProjectPackage(
+          packageBlob,
+          projectPackageFilename(projectMetadata.name),
+        )
       }
     } catch (error) {
       if (!(error instanceof Error)) throw error

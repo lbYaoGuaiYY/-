@@ -130,6 +130,31 @@ export async function downloadProjectPackage(
   downloadBlob(blob, projectPackageFilename(projectName))
 }
 
+export type ProjectPackageDelivery = "shared" | "downloaded"
+
+export async function shareOrDownloadProjectPackage(
+  packageBlob: Blob,
+  filename: string,
+): Promise<ProjectPackageDelivery> {
+  const file = new File([packageBlob], filename, {
+    type: packageBlob.type || "application/zip",
+  })
+  const canShare =
+    typeof navigator !== "undefined" &&
+    typeof navigator.share === "function" &&
+    (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] }))
+  if (canShare) {
+    try {
+      await navigator.share({ files: [file], title: filename })
+      return "shared"
+    } catch {
+      // Sharing can be cancelled or rejected by the system; the download is the safe fallback.
+    }
+  }
+  downloadBlob(packageBlob, filename)
+  return "downloaded"
+}
+
 export function projectPackageFilename(projectName: string): string {
   return `${safeFilename(projectName)}.qingshe`
 }
