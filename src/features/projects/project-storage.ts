@@ -7,7 +7,7 @@ import { TauriProjectCatalog } from "./tauri-project-catalog"
 import { TauriProjectStore } from "./tauri-project-store"
 import { isDesktopRuntime } from "./tauri-runtime"
 
-export { isDesktopRuntime } from "./tauri-runtime"
+export { getPlatformRuntime, isDesktopRuntime, isMobileRuntime } from "./tauri-runtime"
 
 export function createProjectStore(projectId: ProjectId): ProjectStore {
   return isDesktopRuntime()
