@@ -1,0 +1,286 @@
+.offline-asset-manager__backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--surface-app) 78%, transparent);
+}
+
+.offline-asset-manager__backdrop.is-panel {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: block;
+  padding: 0;
+  background: var(--surface-panel);
+}
+
+.offline-asset-manager {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: min(calc(100vw - var(--space-6) * 2), calc(var(--left-panel-width) * 2));
+  max-height: calc(100dvh - var(--space-6) * 2);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-panel);
+}
+
+.offline-asset-manager.is-panel {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.offline-asset-manager__header,
+.offline-asset-manager__actions,
+.offline-asset-manager__item,
+.offline-asset-manager__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.offline-asset-manager__header {
+  min-height: var(--header-height);
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.offline-asset-manager__header h2,
+.offline-asset-manager__header p,
+.offline-asset-manager__status,
+.offline-asset-manager__item strong,
+.offline-asset-manager__item span,
+.offline-asset-manager__summary strong,
+.offline-asset-manager__summary span {
+  margin: 0;
+}
+
+.offline-asset-manager__header h2 {
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.offline-asset-manager__header p,
+.offline-asset-manager__summary span,
+.offline-asset-manager__item span,
+.offline-asset-manager__status {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.offline-asset-manager__summary {
+  margin: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+}
+
+.offline-asset-manager__summary > div,
+.offline-asset-manager__item > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.offline-asset-manager__actions {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+
+.offline-asset-manager__packages {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-3);
+}
+
+.offline-asset-manager__package-section {
+  padding: var(--space-2) 0;
+}
+
+.offline-asset-manager__package-section + .offline-asset-manager__package-section {
+  border-top: 1px solid var(--border-default);
+}
+
+.offline-asset-manager__package-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  gap: var(--space-2);
+}
+
+.offline-asset-manager__package-section h3 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.offline-asset-manager__section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.offline-asset-manager__section-toggle:hover {
+  color: var(--text-primary);
+}
+
+.offline-asset-manager__package-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.offline-asset-manager__package {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+}
+
+.offline-asset-manager__package-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.offline-asset-manager__package-head strong {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.offline-asset-manager__package-status {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.offline-asset-manager__package-status.is-ready {
+  background: color-mix(in srgb, var(--status-success) 16%, var(--surface-control));
+  color: var(--status-success);
+}
+
+.offline-asset-manager__package-status.is-auto {
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--surface-control));
+  color: var(--accent-hover);
+}
+
+.offline-asset-manager__package-description,
+.offline-asset-manager__package-meta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.offline-asset-manager__package-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offline-asset-manager__package progress {
+  width: 100%;
+  accent-color: var(--accent-primary);
+}
+
+.offline-asset-manager__package-actions {
+  display: inline-flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
+.offline-asset-manager__package-actions .text-button {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+}
+
+.offline-asset-manager__package-actions .text-button.is-subtle {
+  color: var(--text-secondary);
+}
+
+.offline-asset-manager__actions .icon-button {
+  margin-left: auto;
+}
+
+.offline-asset-manager__status {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+}
+
+.offline-asset-manager__actions .offline-asset-manager__status {
+  padding: 0;
+  text-align: left;
+}
+
+.offline-asset-manager__status.is-error {
+  color: var(--status-error);
+}
+
+.offline-asset-manager__list {
+  display: grid;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.offline-asset-manager__item {
+  min-height: var(--header-height);
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.offline-asset-manager__item:last-child {
+  border-bottom: 0;
+}
+
+.offline-asset-manager__item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 699px) {
+  .offline-asset-manager__backdrop {
+    align-items: end;
+    padding: var(--space-2);
+  }
+
+  .offline-asset-manager {
+    width: 100%;
+  }
+
+  .offline-asset-manager__actions {
+    flex-wrap: wrap;
+  }
+}
