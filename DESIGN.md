@@ -127,6 +127,21 @@
 - **States**: default、hover、focus、loading、error。
 - **Accessibility**: 键盘可添加素材，完整名称在 `title` 中可读。
 
+### Asset Filter Row
+
+- **Structure**: 名称/编号/标签搜索框 + 单一分类选择器。
+- **Spacing**: 12px 外边距、8px 控件间距；桌面高度 32px，触屏高度 44px。
+- **States**: loading、ready、empty、service unavailable；错误时继续显示内置素材。
+- **Behavior**: 搜索与分类由本地素材服务处理，首屏最多 120 项，其余由用户显式加载。
+- **Accessibility**: 使用原生搜索框、选择器和按钮，所有控件必须有可读标签。
+
+### Asset Review Gate
+
+- **Structure**: 在库、待检查和回收站三个目录视图；待检查入口显示数量。
+- **Behavior**: 编辑器只读取已确认素材；待检查素材保留当前分类，确认后进入在库视图。
+- **States**: approved、needs review、selected、empty、busy。
+- **Accessibility**: 视图按钮使用可见文字，素材选择使用 `aria-pressed`，确认动作不能只依赖颜色表达。
+
 ### Inspector Field
 
 - **Structure**: 标签 + 数值输入框；单位紧邻数值。
@@ -138,6 +153,14 @@
 - **Structure**: 可见性、缩略图、名称、锁定状态。
 - **States**: default、selected、hidden、locked、dragging。
 - **Accessibility**: 当前层使用 `aria-current`；排序按钮有方向说明。
+
+### Project Card
+
+- **Structure**: 场地底图封面、项目名称、最后修改时间、打开入口与管理操作。
+- **States**: default、hover、focus、renaming、busy。
+- **Depth**: 仅使用 `1px solid var(--border-default)`，不使用阴影。
+- **Accessibility**: 打开、重命名、复制和删除分别使用原生按钮及完整 `aria-label`。
+- **Responsive**: 桌面三列、平板两列、手机单列。
 
 ## 6. Motion & Interaction
 

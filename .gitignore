@@ -1,12 +1,17 @@
 node_modules/
 dist/
+dist-asset-admin/
+src-tauri/target/
+src-tauri/gen/
 coverage/
 test-results/
 playwright-report/
 outputs/
+.qingshe-models/
 .omo/evidence/
 .omo/start-work/
 .omo/boulder.json
 *.log
+.env.local
 .DS_Store
 Thumbs.db

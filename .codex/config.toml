@@ -1,15 +1,9 @@
-model = "gpt-5.6-sol"
 web_search = "live"
 
 [features]
 multi_agent = true
+use_agent_identity = true
 
-[agents]
-max_threads = 4
-max_depth = 1
-
-# Managed by LazyCodex: multi_agent_v2 is re-disabled on every Codex session start
-# because enabling it fails every turn with HTTP 400 (openai/codex#26753).
-# Opt out: LAZYCODEX_CONFIG_MIGRATION_DISABLED=1 (or OMO_CODEX_CONFIG_MIGRATION_DISABLED=1).
 [features.multi_agent_v2]
-enabled = false
+enabled = true
+root_agent_usage_hint_text = "When spawning a configured custom agent role, set fork_turns to none because full-history forks inherit the parent agent type and reject role overrides."
