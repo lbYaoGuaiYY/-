@@ -9,52 +9,60 @@ import {
   useSensors,
 } from "@dnd-kit/core"
 import type { ReactNode } from "react"
-import { useState } from "react"
-
+import { useMemo, useState } from "react"
+import type { LibraryAsset } from "../assets/asset-library"
 import { AssetDragOverlay } from "../assets/DraggableAssetTile"
-import type { DemoAsset } from "../assets/demo-assets"
 import { clientPointToLogicalCanvasPoint, EDITOR_CANVAS_DROP_ID } from "./drag-placement"
-import type { EditorController } from "./editor-controller"
 import {
-  EDITOR_DRAG_ANNOUNCEMENTS,
+  createEditorDragAnnouncements,
   EDITOR_SCREEN_READER_INSTRUCTIONS,
-  findDemoAssetFromDragData,
+  findLibraryAssetFromDragData,
 } from "./editor-drag-accessibility"
 import { editorKeyboardCoordinates, MousePenPointerSensor } from "./editor-drag-sensors"
 import type { CanvasSize } from "./editor-model"
 
+const MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 8 } } as const
+const TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 180, tolerance: 8 } } as const
+const KEYBOARD_SENSOR_OPTIONS = { coordinateGetter: editorKeyboardCoordinates } as const
+
 export type EditorDragContextProps = {
+  readonly assets: readonly LibraryAsset[]
   readonly backgroundLoaded: boolean
   readonly canvasSize: CanvasSize
   readonly children: ReactNode
-  readonly controller: EditorController | null
   readonly onAssetDragStart: (() => void) | undefined
+  readonly onPlaceAsset: (
+    asset: LibraryAsset,
+    center: { readonly x: number; readonly y: number },
+  ) => void
   readonly onRequestBackground: () => void
 }
 
 export function EditorDragContext({
+  assets,
   backgroundLoaded,
   canvasSize,
   children,
-  controller,
   onAssetDragStart,
+  onPlaceAsset,
   onRequestBackground,
 }: EditorDragContextProps) {
-  const [activeAsset, setActiveAsset] = useState<DemoAsset | null>(null)
+  const [activeAsset, setActiveAsset] = useState<LibraryAsset | null>(null)
+  const announcements = useMemo(() => createEditorDragAnnouncements(assets), [assets])
   const sensors = useSensors(
-    useSensor(MousePenPointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: editorKeyboardCoordinates }),
+    useSensor(MousePenPointerSensor, MOUSE_SENSOR_OPTIONS),
+    useSensor(TouchSensor, TOUCH_SENSOR_OPTIONS),
+    useSensor(KeyboardSensor, KEYBOARD_SENSOR_OPTIONS),
   )
 
   function handleDragStart(event: DragStartEvent): void {
-    const asset = findDemoAssetFromDragData(event.active.data.current)
+    const asset = findLibraryAssetFromDragData(event.active.data.current, assets)
     setActiveAsset(asset)
     if (asset !== null) onAssetDragStart?.()
   }
 
   function handleDragEnd(event: DragEndEvent): void {
-    const asset = findDemoAssetFromDragData(event.active.data.current)
+    const asset = findLibraryAssetFromDragData(event.active.data.current, assets)
     setActiveAsset(null)
     if (asset === null) return
     if (!backgroundLoaded) {
@@ -73,13 +81,13 @@ export function EditorDragContext({
       },
       canvasSize,
     )
-    if (result.kind === "valid") void controller?.addBuiltInAsset(asset, result.point)
+    if (result.kind === "valid") onPlaceAsset(asset, result.point)
   }
 
   return (
     <DndContext
       accessibility={{
-        announcements: EDITOR_DRAG_ANNOUNCEMENTS,
+        announcements,
         screenReaderInstructions: EDITOR_SCREEN_READER_INSTRUCTIONS,
       }}
       sensors={sensors}

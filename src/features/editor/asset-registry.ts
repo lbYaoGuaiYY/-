@@ -1,9 +1,12 @@
+import ky from "ky"
 import { z } from "zod"
-
+import type { LibraryAsset } from "../assets/asset-library"
+import { CloudAssetCache } from "../assets/cloud-asset-cache"
 import type { DemoAsset } from "../assets/demo-assets"
 import { type AssetId, createAssetId } from "./editor-model"
 
 const LocalImageMimeSchema = z.enum(["image/jpeg", "image/png", "image/webp"])
+const cloudAssetCache = new CloudAssetCache()
 
 export type LocalAssetSource = {
   readonly id: AssetId
@@ -39,6 +42,29 @@ export class AssetRegistry {
     } satisfies AssetRecord
     this.records.set(id, record)
     return record
+  }
+
+  async registerLibraryAsset(asset: LibraryAsset): Promise<AssetRecord> {
+    switch (asset.source.kind) {
+      case "built-in":
+        return this.registerBuiltIn(asset.source.asset)
+      case "managed": {
+        const localAsset = asset.source.localAsset ?? {
+          id: asset.assetId,
+          name: asset.name,
+          mimeType: "image/png",
+          blob: await ky.get(asset.source.processedUrl, { retry: 0 }).blob(),
+        }
+        if (asset.source.serviceAsset !== null && asset.source.serviceAsset !== undefined) {
+          await cloudAssetCache.saveProcessed(asset.source.serviceAsset, localAsset.blob)
+        }
+        return this.registerLocalAsset(localAsset)
+      }
+      default: {
+        const unreachable: never = asset.source
+        throw new UnexpectedLibraryAssetSourceError(String(unreachable))
+      }
+    }
   }
 
   registerFile(file: File): AssetRecord {
@@ -88,4 +114,8 @@ export class AssetRegistry {
     }
     this.records.clear()
   }
+}
+
+class UnexpectedLibraryAssetSourceError extends Error {
+  readonly name = "UnexpectedLibraryAssetSourceError"
 }

@@ -9,6 +9,35 @@ afterEach(() => {
 })
 
 describe("AutosaveCoordinator", () => {
+  it("persists a pending snapshot before disposal completes", async () => {
+    // Given
+    vi.useFakeTimers()
+    const save = vi.fn(async () => ({ kind: "saved", durability: "persistent" }) as const)
+    const coordinator = new AutosaveCoordinator<Snapshot>({ delayMs: 600, save })
+    coordinator.schedule({ revision: 1 })
+
+    // When
+    await coordinator.dispose()
+
+    // Then
+    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledWith({ revision: 1 })
+  })
+
+  it("ignores new snapshots after disposal", async () => {
+    // Given
+    const save = vi.fn(async () => ({ kind: "saved", durability: "persistent" }) as const)
+    const coordinator = new AutosaveCoordinator<Snapshot>({ delayMs: 600, save })
+    await coordinator.dispose()
+
+    // When
+    coordinator.schedule({ revision: 1 })
+    await coordinator.flush()
+
+    // Then
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it("marks a newly scheduled change as saving during the debounce window", () => {
     vi.useFakeTimers()
     const coordinator = new AutosaveCoordinator<Snapshot>({
@@ -78,5 +107,22 @@ describe("AutosaveCoordinator", () => {
       retryable: true,
       reason: "quota_exceeded",
     })
+  })
+
+  it("retries one transient storage error before reporting save failure", async () => {
+    // Given
+    const save = vi
+      .fn()
+      .mockResolvedValueOnce({ kind: "error" } as const)
+      .mockResolvedValueOnce({ kind: "saved", durability: "persistent" } as const)
+    const coordinator = new AutosaveCoordinator<Snapshot>({ delayMs: 600, save })
+
+    // When
+    coordinator.schedule({ revision: 1 })
+    await coordinator.flush()
+
+    // Then
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(coordinator.getStatus()).toEqual({ kind: "saved", durability: "persistent" })
   })
 })

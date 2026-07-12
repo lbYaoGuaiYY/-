@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "@playwright/test"
+import { useBuiltInAssetFallback } from "./asset-service-fallback"
 
 test.use({ viewport: { width: 1280, height: 800 } })
+test.beforeEach(async ({ page }) => useBuiltInAssetFallback(page))
 
 test("drags a wedding asset from the panel onto the canvas", async ({ page }) => {
   // Given
@@ -30,6 +32,155 @@ test("drags a wedding asset from the panel onto the canvas", async ({ page }) =>
   await expect(page.getByTestId("layer-list")).toContainText("奶油花艺拱门")
   await expect(page.getByTestId("layer-item-floral-arch")).toHaveCount(1)
   await expect(page.getByTestId("asset-drag-overlay")).toHaveCount(0)
+})
+
+test("selects multiple canvas layers with the built-in marquee", async ({ page }) => {
+  // Given
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  await page.getByTestId("asset-card-flower-column").click()
+  const canvas = page.locator("canvas.upper-canvas")
+  const canvasBox = await canvas.boundingBox()
+  if (canvasBox === null) throw new Error("Fabric canvas must be visible")
+
+  // When
+  await page.mouse.move(canvasBox.x + 80, canvasBox.y + 80)
+  await page.mouse.down()
+  await page.mouse.move(canvasBox.x + canvasBox.width - 80, canvasBox.y + canvasBox.height - 80, {
+    steps: 8,
+  })
+  await page.mouse.up()
+
+  // Then
+  const selectedRows = page.getByTestId("layer-list").locator(".layer-row.is-selected")
+  await expect(selectedRows).toHaveCount(2)
+  await expect(page.getByRole("heading", { name: /图层/ })).toContainText("已选 2")
+  await expect(page.getByRole("button", { name: "删除所选素材" })).toBeEnabled()
+  await page.screenshot({ path: "test-results/multi-select.png", fullPage: true })
+
+  await page.keyboard.press("Control+C")
+  await page.keyboard.press("Control+V")
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(4)
+  await expect(selectedRows).toHaveCount(2)
+  await page.keyboard.press("Control+Z")
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+
+  await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
+  await page
+    .getByTestId("layer-item-flower-column")
+    .locator(".layer-select")
+    .click({ modifiers: ["Control"] })
+  await page.keyboard.press("Control+D")
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(4)
+  await expect(selectedRows).toHaveCount(2)
+  await page.keyboard.press("Delete")
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+})
+
+test("aligns multiple layers from the existing editor toolbar", async ({ page }) => {
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  await page.getByTestId("asset-card-flower-column").click()
+
+  await page.getByLabel("X", { exact: true }).fill("820")
+  await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
+  await page
+    .getByTestId("layer-item-flower-column")
+    .locator(".layer-select")
+    .click({ modifiers: ["Control"] })
+
+  const alignCenter = page.getByRole("button", { name: "水平居中" })
+  await expect(alignCenter).toBeEnabled()
+  await alignCenter.click()
+  await expect(page.getByTestId("layer-list").locator(".layer-row.is-selected")).toHaveCount(2)
+  await page.waitForTimeout(200)
+  await page.screenshot({ path: "test-results/alignment-toolbar-active.png", fullPage: true })
+
+  await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
+  const firstX = await page.getByLabel("X", { exact: true }).inputValue()
+  await page.getByTestId("layer-item-flower-column").locator(".layer-select").click()
+  const secondX = await page.getByLabel("X", { exact: true }).inputValue()
+  expect(secondX).toBe(firstX)
+})
+
+test("flips every selected layer from the multi-selection inspector", async ({ page }) => {
+  // Given
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  await page.getByTestId("asset-card-flower-column").click()
+  await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
+  await page
+    .getByTestId("layer-item-flower-column")
+    .locator(".layer-select")
+    .click({ modifiers: ["Control"] })
+
+  // When
+  await page.getByRole("button", { name: "批量水平翻转" }).click()
+
+  // Then
+  await expect(page.getByTestId("layer-list").locator(".layer-row.is-selected")).toHaveCount(2)
+  await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
+  await expect(page.getByRole("button", { name: "水平翻转" })).toHaveClass(/is-active/)
+  await page.getByTestId("layer-item-flower-column").locator(".layer-select").click()
+  await expect(page.getByRole("button", { name: "水平翻转" })).toHaveClass(/is-active/)
+})
+
+test("copies and pastes a selected canvas object from its context menu", async ({ page }) => {
+  // Given
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  const canvas = page.locator("canvas.upper-canvas")
+
+  // When
+  await canvas.click({ button: "right", position: { x: 600, y: 400 } })
+  await expect(page.getByTestId("layer-context-menu")).toBeVisible()
+  await page.getByRole("menuitem", { name: "复制", exact: true }).click()
+  await canvas.click({ position: { x: 312, y: 208 } })
+  await page.keyboard.press("Control+V")
+
+  // Then
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+})
+
+test("copies and pastes a selected canvas object with keyboard shortcuts", async ({ page }) => {
+  // Given
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  const canvas = page.locator("canvas.upper-canvas")
+
+  // When
+  await canvas.click({ position: { x: 312, y: 208 } })
+  await page.keyboard.press("Control+C")
+  await page.keyboard.press("Control+V")
+
+  // Then
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+})
+
+test("snaps a dragged layer to the canvas center", async ({ page }) => {
+  await page.goto("/")
+  await setImageInput(page)
+  await page.getByTestId("asset-card-floral-arch").click()
+  await page.getByLabel("X", { exact: true }).fill("500")
+
+  const canvas = page.locator("canvas.upper-canvas")
+  const canvasBox = await canvas.boundingBox()
+  if (canvasBox === null) throw new Error("Fabric canvas must be visible")
+  const start = {
+    x: canvasBox.x + (500 / 1200) * canvasBox.width,
+    y: canvasBox.y + canvasBox.height / 2,
+  }
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(start.x + (96 / 1200) * canvasBox.width, start.y, { steps: 8 })
+  await page.mouse.up()
+
+  await expect(page.getByLabel("X", { exact: true })).toHaveValue("600")
 })
 
 test("places and cancels an asset with the keyboard", async ({ page }) => {
@@ -183,8 +334,8 @@ test("routes phone assets, layers, and properties to distinct panels", async ({ 
   )
 })
 
-async function setImageInput(page: Page): Promise<void> {
-  await page.getByTestId("background-file-input").evaluate(async (element) => {
+async function setImageInput(page: Page, fillColor: string | null = "#e6ded1"): Promise<void> {
+  await page.getByTestId("background-file-input").evaluate(async (element, fillColor) => {
     if (!(element instanceof HTMLInputElement))
       throw new TypeError("image input is not a file input")
     const canvas = document.createElement("canvas")
@@ -192,8 +343,10 @@ async function setImageInput(page: Page): Promise<void> {
     canvas.height = 800
     const context = canvas.getContext("2d")
     if (context === null) throw new Error("2D canvas is unavailable")
-    context.fillStyle = "#e6ded1"
-    context.fillRect(0, 0, canvas.width, canvas.height)
+    if (fillColor !== null) {
+      context.fillStyle = fillColor
+      context.fillRect(0, 0, canvas.width, canvas.height)
+    }
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((value) => {
         if (value === null) reject(new Error("Failed to create test venue image"))
@@ -204,5 +357,10 @@ async function setImageInput(page: Page): Promise<void> {
     transfer.items.add(new File([blob], "venue.png", { type: "image/png" }))
     element.files = transfer.files
     element.dispatchEvent(new Event("change", { bubbles: true }))
-  })
+  }, fillColor)
+  await expect(page.getByTestId("editor-canvas")).toHaveAttribute(
+    "data-background-loaded",
+    "true",
+    { timeout: 10_000 },
+  )
 }

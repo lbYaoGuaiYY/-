@@ -53,7 +53,8 @@
   .text-button,
   .primary-button,
   .search-field,
-  .numeric-input {
+  .numeric-input,
+  .asset-panel__category-filter {
     min-height: 44px;
   }
 

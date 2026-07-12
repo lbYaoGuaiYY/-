@@ -2,18 +2,17 @@ import { useDraggable } from "@dnd-kit/core"
 import { Plus } from "@phosphor-icons/react"
 
 import { createAssetDragPayload } from "../editor/drag-placement"
-import { createAssetId } from "../editor/editor-model"
-import type { DemoAsset } from "./demo-assets"
+import type { LibraryAsset } from "./asset-library"
 
 export type DraggableAssetTileProps = {
-  readonly asset: DemoAsset
-  readonly onAdd: (asset: DemoAsset) => void
+  readonly asset: LibraryAsset
+  readonly onAdd: (asset: LibraryAsset) => void
 }
 
 export function DraggableAssetTile({ asset, onAdd }: DraggableAssetTileProps) {
   const draggable = useDraggable({
     id: `asset:${asset.id}`,
-    data: createAssetDragPayload(createAssetId(`built-in:${asset.id}`)),
+    data: createAssetDragPayload(asset.assetId),
   })
   return (
     <button
@@ -32,7 +31,7 @@ export function DraggableAssetTile({ asset, onAdd }: DraggableAssetTileProps) {
   )
 }
 
-export function AssetDragOverlay({ asset }: { readonly asset: DemoAsset }) {
+export function AssetDragOverlay({ asset }: { readonly asset: LibraryAsset }) {
   return (
     <div className="asset-drag-overlay" data-testid="asset-drag-overlay">
       <AssetTileContent asset={asset} showAddIcon={false} />
@@ -44,13 +43,13 @@ function AssetTileContent({
   asset,
   showAddIcon,
 }: {
-  readonly asset: DemoAsset
+  readonly asset: LibraryAsset
   readonly showAddIcon: boolean
 }) {
   return (
     <>
       <span className="asset-tile__preview">
-        <img src={asset.src} alt="" draggable={false} />
+        <img src={asset.thumbnailSrc ?? asset.src} alt="" draggable={false} />
       </span>
       <span className="asset-tile__details">
         <span className="asset-tile__name">{asset.name}</span>

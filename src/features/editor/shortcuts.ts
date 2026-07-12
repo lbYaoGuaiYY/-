@@ -1,6 +1,10 @@
 export const EDITOR_SHORTCUT = {
   undo: "undo",
   redo: "redo",
+  copySelection: "copy-selection",
+  pasteSelection: "paste-selection",
+  cutSelection: "cut-selection",
+  duplicateSelection: "duplicate-selection",
   deleteSelection: "delete-selection",
   layerUp: "layer-up",
   layerDown: "layer-down",
@@ -47,6 +51,22 @@ export function resolveEditorShortcut(event: ShortcutKeyEvent): EditorShortcut |
 
   if (event.ctrlKey && !event.metaKey && !event.shiftKey && key === "y") {
     return EDITOR_SHORTCUT.redo
+  }
+
+  if (hasPrimaryModifier && !event.shiftKey && key === "c") {
+    return EDITOR_SHORTCUT.copySelection
+  }
+
+  if (hasPrimaryModifier && !event.shiftKey && key === "v") {
+    return EDITOR_SHORTCUT.pasteSelection
+  }
+
+  if (hasPrimaryModifier && !event.shiftKey && key === "x") {
+    return EDITOR_SHORTCUT.cutSelection
+  }
+
+  if (hasPrimaryModifier && !event.shiftKey && key === "d") {
+    return EDITOR_SHORTCUT.duplicateSelection
   }
 
   if (hasPrimaryModifier && event.code === "BracketRight") {

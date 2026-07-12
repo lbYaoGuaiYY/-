@@ -2,7 +2,8 @@
   display: grid;
   grid-template-rows: var(--header-height) minmax(0, 1fr) var(--status-height);
   width: 100vw;
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--surface-app);
 }
 
@@ -51,6 +52,7 @@
 }
 
 .side-panel {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   background: var(--surface-panel);
@@ -95,14 +97,19 @@
   padding: 0 var(--space-2);
   border-bottom: 1px solid var(--border-default);
   background: var(--surface-panel);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.context-toolbar > .toolbar-group,
+.context-toolbar > button {
+  flex: none;
 }
 
 .stage {
   position: relative;
-  display: grid;
   min-width: 0;
   min-height: 0;
-  place-items: center;
   overflow: hidden;
   background-color: var(--surface-stage);
   background-image:
@@ -116,6 +123,28 @@
     8px -8px,
     -8px 0;
   background-size: 16px 16px;
+}
+
+.stage-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+.stage-scroll.is-panning,
+.stage-scroll.is-panning * {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.stage-scroll-content {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  place-items: center;
+  padding: var(--space-6);
+  box-sizing: border-box;
 }
 
 .canvas-host {
@@ -132,6 +161,20 @@
 
 .canvas-host canvas {
   display: block;
+}
+
+.zoom-controls {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
 }
 
 .canvas-empty {

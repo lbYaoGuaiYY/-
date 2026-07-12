@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest"
 
 import { createAssetId, createLayerId } from "../src/features/editor/editor-model"
 import {
+  createProjectId,
+  createStoredProjectMetadata,
   migrateStoredProject,
   parseStoredLocalAsset,
   parseStoredProject,
+  parseStoredProjectMetadata,
   validateProjectSnapshot,
 } from "../src/features/projects/project-format"
 
@@ -38,6 +41,48 @@ function validDocument() {
 }
 
 describe("project format", () => {
+  it("creates a named project record with an immutable project id", () => {
+    // Given
+    const id = createProjectId("project-1")
+
+    // When
+    const record = createStoredProjectMetadata({
+      id,
+      name: "  林先生婚礼方案  ",
+      createdAt: 10,
+      updatedAt: 20,
+      coverAssetId: localId,
+    })
+
+    // Then
+    expect(record).toEqual({
+      schemaVersion: 1,
+      id,
+      name: "林先生婚礼方案",
+      createdAt: 10,
+      updatedAt: 20,
+      coverAssetId: localId,
+    })
+  })
+
+  it("rejects an empty project name at the storage boundary", () => {
+    // Given
+    const id = createProjectId("project-1")
+
+    // When
+    const result = parseStoredProjectMetadata({
+      schemaVersion: 1,
+      id,
+      name: "   ",
+      createdAt: 10,
+      updatedAt: 20,
+      coverAssetId: null,
+    })
+
+    // Then
+    expect(result).toEqual({ kind: "corrupt" })
+  })
+
   it("rejects non-finite transforms and out-of-range opacity", () => {
     const document = validDocument()
     const result = parseStoredProject({
@@ -55,6 +100,27 @@ describe("project format", () => {
     })
 
     expect(result.kind).toBe("corrupt")
+  })
+
+  it("defaults perspective values when opening a project saved before side views existed", () => {
+    // Given
+    const storedProject = {
+      schemaVersion: 2,
+      updatedAt: 10,
+      document: validDocument(),
+    }
+
+    // When
+    const result = parseStoredProject(storedProject)
+
+    // Then
+    expect(result.kind).toBe("valid")
+    if (result.kind !== "valid") return
+    expect(result.value.document.layers[0]?.transform).toMatchObject({
+      skewX: 0,
+      skewY: 0,
+      perspectiveX: 0,
+    })
   })
 
   it("parses a local asset Blob without reducing it to a blob URL", () => {

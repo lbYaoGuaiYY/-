@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { EditorController } from "../editor/editor-controller"
 import { AutosaveCoordinator, type AutosaveStatus } from "./autosave-coordinator"
-import { IndexedDbProjectStore } from "./indexeddb-project-store"
-import type { ProjectSnapshot } from "./project-format"
+import type { ProjectId, ProjectSnapshot } from "./project-format"
+import { createProjectStore } from "./project-storage"
 import type { LoadProjectResult, ProjectStore, StorageDurability } from "./project-store"
 
 const AUTOSAVE_DELAY_MS = 600
@@ -22,8 +22,11 @@ export type ProjectSession = {
   readonly flush: () => Promise<void>
 }
 
-export function useProjectSession(controller: EditorController | null): ProjectSession {
-  const store = useMemo<ProjectStore>(() => new IndexedDbProjectStore(), [])
+export function useProjectSession(
+  controller: EditorController | null,
+  projectId: ProjectId,
+): ProjectSession {
+  const store = useMemo<ProjectStore>(() => createProjectStore(projectId), [projectId])
   const [status, setStatus] = useState<ProjectSessionStatus>({ kind: "idle" })
   const coordinatorRef = useRef<AutosaveCoordinator<ProjectSnapshot> | null>(null)
   const flush = useCallback(async () => coordinatorRef.current?.flush(), [])
@@ -65,6 +68,13 @@ export function useProjectSession(controller: EditorController | null): ProjectS
         if (snapshot === null) setStatus({ kind: "save_failed", reason: "error" })
         else coordinator?.schedule(snapshot)
       })
+      const currentSnapshot = activeController.captureProject()
+      if (
+        currentSnapshot !== null &&
+        (latestDocument.backgroundAssetId !== null || latestDocument.layers.length > 0)
+      ) {
+        coordinator.schedule(currentSnapshot)
+      }
     }
 
     async function restore(result: LoadProjectResult): Promise<void> {
@@ -77,7 +87,10 @@ export function useProjectSession(controller: EditorController | null): ProjectS
       else if (result.kind === "corrupt" || result.kind === "error") {
         setStatus({ kind: "restore_failed" })
       }
-      if (!cancelled) attachAutosave()
+      if (!cancelled) {
+        activeController.finishInitialization()
+        attachAutosave()
+      }
     }
 
     async function initialize(): Promise<void> {
@@ -87,6 +100,7 @@ export function useProjectSession(controller: EditorController | null): ProjectS
         if (!(error instanceof Error)) throw error
         if (!cancelled) {
           setStatus({ kind: "restore_failed" })
+          activeController.finishInitialization()
           attachAutosave()
         }
       }
@@ -96,13 +110,19 @@ export function useProjectSession(controller: EditorController | null): ProjectS
       if (document.visibilityState === "hidden") void coordinator?.flush()
     }
 
+    function handlePageHide(): void {
+      void coordinator?.flush()
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("pagehide", handlePageHide)
     void initialize()
     return () => {
       cancelled = true
       document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("pagehide", handlePageHide)
       unsubscribe?.()
-      coordinator?.dispose()
+      void coordinator?.dispose()
       if (coordinatorRef.current === coordinator) coordinatorRef.current = null
     }
   }, [controller, store])

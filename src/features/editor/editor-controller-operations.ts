@@ -8,7 +8,7 @@ import {
   type EditorDocument,
   INITIAL_EDITOR_DOCUMENT,
 } from "./editor-model"
-import type { FabricRuntime } from "./fabric-runtime"
+import type { ExportImageFormat, FabricRuntime } from "./fabric-runtime"
 import { type ImageFileResult, validateImageFile } from "./image-import"
 
 export type BackgroundImportResult =
@@ -59,13 +59,17 @@ export async function addRuntimeLayer(
   return runtime.addLayer(record, createLayerId(crypto.randomUUID()), { canvasSize, center })
 }
 
-export async function downloadRuntimePng(runtime: FabricRuntime): Promise<boolean> {
-  const blob = await runtime.exportPng()
+export async function downloadRuntimeImage(
+  runtime: FabricRuntime,
+  format: ExportImageFormat,
+): Promise<boolean> {
+  const blob = await runtime.exportImage(format)
   if (blob === null) return false
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
   anchor.href = url
-  anchor.download = `轻设设计-${new Date().toISOString().slice(0, 10)}.png`
+  const extension = format === "jpeg" ? "jpg" : "png"
+  anchor.download = `轻设设计-${new Date().toISOString().slice(0, 10)}.${extension}`
   document.body.append(anchor)
   anchor.click()
   anchor.remove()

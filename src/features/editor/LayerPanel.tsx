@@ -25,22 +25,32 @@ import {
   Stack,
   X,
 } from "@phosphor-icons/react"
+import { type KeyboardEvent, type MouseEvent, useMemo, useState } from "react"
 import { MousePenPointerSensor } from "./editor-drag-sensors"
 import type { AssetId, ImageLayer, LayerId } from "./editor-model"
 import { LayerIdSchema } from "./editor-model"
+import type { LayerDirection } from "./fabric-runtime"
+import { LayerContextMenu } from "./LayerContextMenu"
 import { toLayerPanelOrder } from "./layer-order"
 
 export type LayerPanelProps = {
+  readonly canPaste: boolean
   readonly layers: readonly ImageLayer[]
-  readonly selectedLayerId: LayerId | null
+  readonly selectedLayerIds: readonly LayerId[]
   readonly getAssetSource: (id: AssetId) => string | undefined
   readonly onClose: () => void
+  readonly onCopy: (id: LayerId) => void
+  readonly onCut: (id: LayerId) => void
+  readonly onDelete: (id: LayerId) => void
+  readonly onDuplicate: (id: LayerId) => void
   readonly onLayerStateChange: (
     id: LayerId,
     changes: Partial<Pick<ImageLayer, "visible" | "locked">>,
   ) => void
   readonly onReorder: (activeId: LayerId, targetId: LayerId) => void
-  readonly onSelect: (id: LayerId) => void
+  readonly onMove: (id: LayerId, direction: LayerDirection) => void
+  readonly onPaste: () => void
+  readonly onSelect: (id: LayerId, additive?: boolean) => void
 }
 
 const LAYER_SORT_INSTRUCTIONS = {
@@ -48,24 +58,43 @@ const LAYER_SORT_INSTRUCTIONS = {
     "焦点位于图层排序手柄时，按空格键或回车键拿起图层，使用上下方向键调整前后顺序，再次按空格键或回车键放下，按 Escape 键取消。",
 }
 
+const MOUSE_SENSOR_OPTIONS = { activationConstraint: { distance: 8 } } as const
+const TOUCH_SENSOR_OPTIONS = { activationConstraint: { delay: 180, tolerance: 8 } } as const
+const KEYBOARD_SENSOR_OPTIONS = { coordinateGetter: sortableKeyboardCoordinates } as const
+
 export function LayerPanel({
+  canPaste,
   layers,
-  selectedLayerId,
+  selectedLayerIds,
   getAssetSource,
   onClose,
+  onCopy,
+  onCut,
+  onDelete,
+  onDuplicate,
   onLayerStateChange,
   onReorder,
+  onMove,
+  onPaste,
   onSelect,
 }: LayerPanelProps) {
-  const layerById = new Map(layers.map((layer) => [layer.id, layer]))
-  const displayLayers = toLayerPanelOrder(layers.map((layer) => layer.id)).flatMap((id) => {
-    const layer = layerById.get(id)
-    return layer === undefined ? [] : [layer]
-  })
+  const [contextMenu, setContextMenu] = useState<{
+    readonly layer: ImageLayer
+    readonly x: number
+    readonly y: number
+  } | null>(null)
+  const displayLayers = useMemo(() => {
+    const layerById = new Map(layers.map((layer) => [layer.id, layer]))
+    return toLayerPanelOrder(layers.map((layer) => layer.id)).flatMap((id) => {
+      const layer = layerById.get(id)
+      return layer === undefined ? [] : [layer]
+    })
+  }, [layers])
+  const announcements = useMemo(() => createLayerAnnouncements(displayLayers), [displayLayers])
   const sensors = useSensors(
-    useSensor(MousePenPointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(MousePenPointerSensor, MOUSE_SENSOR_OPTIONS),
+    useSensor(TouchSensor, TOUCH_SENSOR_OPTIONS),
+    useSensor(KeyboardSensor, KEYBOARD_SENSOR_OPTIONS),
   )
 
   function handleDragEnd(event: DragEndEvent): void {
@@ -74,11 +103,23 @@ export function LayerPanel({
     if (activeId.success && targetId.success) onReorder(activeId.data, targetId.data)
   }
 
+  function openContextMenu(layer: ImageLayer, x: number, y: number): void {
+    if (!selectedLayerIds.includes(layer.id)) onSelect(layer.id)
+    setContextMenu({
+      layer,
+      x: Math.max(8, Math.min(x, window.innerWidth - 220)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 330)),
+    })
+  }
+
   return (
     <section className="panel-section" aria-labelledby="layers-title">
       <header className="panel-header">
         <h2 className="panel-title" id="layers-title">
           图层 <span className="panel-count">{layers.length}</span>
+          {selectedLayerIds.length > 1 && (
+            <span className="panel-selection-count">已选 {selectedLayerIds.length}</span>
+          )}
         </h2>
         <button
           className="icon-button mobile-panel-close"
@@ -97,7 +138,7 @@ export function LayerPanel({
       ) : (
         <DndContext
           accessibility={{
-            announcements: createLayerAnnouncements(displayLayers),
+            announcements,
             screenReaderInstructions: LAYER_SORT_INSTRUCTIONS,
           }}
           collisionDetection={closestCenter}
@@ -114,16 +155,32 @@ export function LayerPanel({
                   key={layer.id}
                   layer={layer}
                   position={index + 1}
-                  selected={layer.id === selectedLayerId}
+                  selected={selectedLayerIds.includes(layer.id)}
                   thumbnailSrc={getAssetSource(layer.assetId)}
                   total={displayLayers.length}
                   onLayerStateChange={onLayerStateChange}
+                  onOpenContextMenu={openContextMenu}
                   onSelect={onSelect}
                 />
               ))}
             </ul>
           </SortableContext>
         </DndContext>
+      )}
+      {contextMenu !== null && (
+        <LayerContextMenu
+          canPaste={canPaste}
+          layer={contextMenu.layer}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCopy={onCopy}
+          onCut={onCut}
+          onDelete={onDelete}
+          onDuplicate={onDuplicate}
+          onMove={onMove}
+          onPaste={onPaste}
+        />
       )}
     </section>
   )
@@ -136,6 +193,7 @@ function SortableLayerRow({
   thumbnailSrc,
   total,
   onLayerStateChange,
+  onOpenContextMenu,
   onSelect,
 }: {
   readonly layer: ImageLayer
@@ -147,7 +205,8 @@ function SortableLayerRow({
     id: LayerId,
     changes: Partial<Pick<ImageLayer, "visible" | "locked">>,
   ) => void
-  readonly onSelect: (id: LayerId) => void
+  readonly onOpenContextMenu: (layer: ImageLayer, x: number, y: number) => void
+  readonly onSelect: (id: LayerId, additive?: boolean) => void
 }) {
   const sortable = useSortable({ id: layer.id, disabled: { draggable: layer.locked } })
   return (
@@ -158,6 +217,16 @@ function SortableLayerRow({
       style={{
         transform: CSS.Transform.toString(sortable.transform),
         transition: sortable.transition,
+      }}
+      onContextMenu={(event: MouseEvent<HTMLLIElement>) => {
+        event.preventDefault()
+        onOpenContextMenu(layer, event.clientX, event.clientY)
+      }}
+      onKeyDown={(event: KeyboardEvent<HTMLLIElement>) => {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
+        event.preventDefault()
+        const rect = event.currentTarget.getBoundingClientRect()
+        onOpenContextMenu(layer, rect.left + 24, rect.top + 24)
       }}
     >
       <button
@@ -184,7 +253,7 @@ function SortableLayerRow({
         className="layer-select"
         type="button"
         aria-current={selected ? "true" : undefined}
-        onClick={() => onSelect(layer.id)}
+        onClick={(event) => onSelect(layer.id, event.shiftKey || event.ctrlKey || event.metaKey)}
       >
         <span className="layer-name" title={layer.name}>
           {layer.name}

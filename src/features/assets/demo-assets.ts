@@ -1,4 +1,17 @@
-export type AssetCategory = "花艺" | "标识" | "家具" | "绿植" | "地面"
+import burgundyAutumnFloral from "./media/burgundy-autumn-floral.png"
+
+export const ASSET_CATEGORIES = [
+  "花艺",
+  "家具",
+  "标识",
+  "绿植",
+  "地面",
+  "灯具",
+  "布艺",
+  "其他",
+] as const
+
+export type AssetCategory = (typeof ASSET_CATEGORIES)[number]
 
 export type DemoAsset = {
   readonly id: string
@@ -143,6 +156,14 @@ export const DEMO_ASSETS = [
     src: pottedPlant,
     width: 190,
     height: 280,
+  },
+  {
+    id: "burgundy-autumn-floral",
+    name: "酒红秋色花艺",
+    category: "花艺",
+    src: burgundyAutumnFloral,
+    width: 1448,
+    height: 1086,
   },
   {
     id: "aisle-runner",

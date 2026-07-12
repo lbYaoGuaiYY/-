@@ -16,6 +16,9 @@ export type LayerTransform = {
   readonly y: number
   readonly scaleX: number
   readonly scaleY: number
+  readonly skewX?: number
+  readonly skewY?: number
+  readonly perspectiveX?: number
   readonly angle: number
   readonly flipX: boolean
   readonly flipY: boolean
@@ -49,6 +52,9 @@ export const LayerTransformSchema = z.object({
   y: FiniteNumberSchema,
   scaleX: FiniteNumberSchema.positive(),
   scaleY: FiniteNumberSchema.positive(),
+  skewX: FiniteNumberSchema.default(0),
+  skewY: FiniteNumberSchema.default(0),
+  perspectiveX: FiniteNumberSchema.min(-60).max(60).default(0),
   angle: FiniteNumberSchema,
   flipX: z.boolean(),
   flipY: z.boolean(),
@@ -75,6 +81,9 @@ export const DEFAULT_LAYER_TRANSFORM = {
   y: 0,
   scaleX: 1,
   scaleY: 1,
+  skewX: 0,
+  skewY: 0,
+  perspectiveX: 0,
   angle: 0,
   flipX: false,
   flipY: false,

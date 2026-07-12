@@ -4,13 +4,19 @@ export type HistoryState<T extends object> = {
   readonly future: readonly T[]
 }
 
+const MAX_HISTORY_DEPTH = 100
+
+function appendPast<T extends object>(past: readonly T[], present: T): readonly T[] {
+  return [...past, present].slice(-MAX_HISTORY_DEPTH)
+}
+
 export function createHistory<T extends object>(present: T): HistoryState<T> {
   return { past: [], present, future: [] }
 }
 
 export function commitHistory<T extends object>(state: HistoryState<T>, next: T): HistoryState<T> {
   return {
-    past: [...state.past, state.present],
+    past: appendPast(state.past, state.present),
     present: next,
     future: [],
   }
@@ -36,7 +42,7 @@ export function redoHistory<T extends object>(state: HistoryState<T>): HistorySt
   }
 
   return {
-    past: [...state.past, state.present],
+    past: appendPast(state.past, state.present),
     present: next,
     future: state.future.slice(1),
   }

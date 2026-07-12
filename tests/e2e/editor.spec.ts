@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright"
 import type { Locator, Page } from "@playwright/test"
 import { expect, test } from "@playwright/test"
+import { useBuiltInAssetFallback } from "./asset-service-fallback"
 
 /**
  * Implementation contract for the editor surface:
@@ -30,6 +31,8 @@ const VIEWPORTS = [
   { name: "tablet portrait", width: 768, height: 1024 },
 ] as const satisfies readonly ViewportCase[]
 
+test.beforeEach(async ({ page }) => useBuiltInAssetFallback(page))
+
 async function openEditor(page: Page): Promise<void> {
   await page.goto("/")
   await expect(page.getByTestId("editor-shell")).toBeVisible()
@@ -55,7 +58,11 @@ async function importBackground(page: Page): Promise<void> {
     element.dispatchEvent(new Event("change", { bubbles: true }))
   }, BACKGROUND_PNG_BASE64)
 
-  await expect(page.getByTestId("editor-canvas")).toHaveAttribute("data-background-loaded", "true")
+  await expect(page.getByTestId("editor-canvas")).toHaveAttribute(
+    "data-background-loaded",
+    "true",
+    { timeout: 10_000 },
+  )
 }
 
 async function addFloralArch(page: Page): Promise<void> {
@@ -68,6 +75,16 @@ function floralArchLayer(page: Page): Locator {
 }
 
 test.describe("editor acceptance contract", () => {
+  test("keeps material ingestion out of the editor surface", async ({ page }) => {
+    // Given: the ordinary editor build is opened for a planner.
+    await openEditor(page)
+
+    // When: the planner inspects the material panel.
+
+    // Then: the panel offers ready materials only, not the internal ingestion action.
+    await expect(page.getByRole("button", { name: "导入素材入库", exact: true })).toHaveCount(0)
+  })
+
   test("loads without browser console or page errors", async ({ page }) => {
     // Given: mutable event buffers collect browser diagnostics for this navigation.
     const consoleErrors: string[] = []
@@ -153,6 +170,50 @@ test.describe("editor acceptance contract", () => {
     await expect(floralArchLayer(page)).toHaveCount(0)
   })
 
+  test("applies a side view preset and restores the front view with undo", async ({ page }) => {
+    // Given
+    await openEditor(page)
+    await importBackground(page)
+    await addFloralArch(page)
+
+    // When
+    await page.getByRole("button", { name: "右侧视图", exact: true }).click()
+
+    // Then
+    await expect(page.getByRole("button", { name: "右侧视图", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+
+    // When
+    await page.getByRole("button", { name: "撤销", exact: true }).click()
+    await floralArchLayer(page).locator(".layer-select").click()
+
+    // Then
+    await expect(page.getByRole("button", { name: "正面视图", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+  })
+
+  test("clamps numeric inspector values to their declared bounds", async ({ page }) => {
+    // Given
+    await openEditor(page)
+    await importBackground(page)
+    await addFloralArch(page)
+    const numberInputs = page.locator('input[type="number"]')
+    const scale = numberInputs.nth(2)
+    const opacity = numberInputs.nth(4)
+
+    // When
+    await scale.fill("600")
+    await opacity.fill("-20")
+
+    // Then
+    await expect(scale).toHaveValue("500")
+    await expect(opacity).toHaveValue("0")
+  })
+
   test("downloads a PNG export", async ({ page }) => {
     // Given
     await openEditor(page)
@@ -167,6 +228,23 @@ test.describe("editor acceptance contract", () => {
 
     // Then
     expect(download.suggestedFilename()).toMatch(/\.png$/i)
+    expect(await download.failure()).toBeNull()
+  })
+
+  test("downloads a JPG export", async ({ page }) => {
+    // Given
+    await openEditor(page)
+    await importBackground(page)
+    await page.getByRole("combobox", { name: "导出图片格式" }).selectOption("jpeg")
+
+    // When
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "导出 JPG", exact: true }).click(),
+    ])
+
+    // Then
+    expect(download.suggestedFilename()).toMatch(/\.jpg$/i)
     expect(await download.failure()).toBeNull()
   })
 

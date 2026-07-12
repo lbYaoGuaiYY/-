@@ -1,15 +1,17 @@
-import Dexie, { type Table, type Transaction } from "dexie"
-
 import { DEMO_ASSETS } from "../assets/demo-assets"
 import { type AssetId, createAssetId } from "../editor/editor-model"
+import { selectUnstoredLocalAssets } from "./project-asset-persistence"
+import { ProjectDatabase } from "./project-database"
 import {
   ACTIVE_PROJECT_KEY,
+  createProjectId,
   createStoredProject,
-  migrateStoredLocalAsset,
-  migrateStoredProject,
+  createStoredProjectMetadata,
+  type ProjectId,
   type ProjectSnapshot,
   parseStoredLocalAsset,
   parseStoredProject,
+  parseStoredProjectMetadata,
   validateProjectSnapshot,
 } from "./project-format"
 import type {
@@ -19,47 +21,24 @@ import type {
   StorageDurability,
 } from "./project-store"
 
-const DATABASE_NAME = "qingshe-projects-v1"
-const PROJECTS_STORE = "projects"
-const ASSETS_STORE = "assets"
-
 const BUILT_IN_ASSET_IDS: ReadonlySet<AssetId> = new Set(
   DEMO_ASSETS.map((asset) => createAssetId(`built-in:${asset.id}`)),
 )
 
-class ProjectDatabase extends Dexie {
-  readonly projects!: Table<unknown, string>
-  readonly assets!: Table<unknown, string>
-  blocked = false
-  versionChanged = false
-
-  constructor() {
-    super(DATABASE_NAME)
-    this.version(0.1).stores({ projects: "", assets: "" })
-    this.version(0.2).stores({ projects: "", assets: "" }).upgrade(migrateDatabase)
-    this.on("blocked", () => {
-      this.blocked = true
-    })
-    this.on("versionchange", () => {
-      this.versionChanged = true
-      this.close()
-    })
-  }
-}
-
-class CorruptStoredRecordError extends Error {
-  readonly name = "CorruptStoredRecordError"
-}
-
 export class IndexedDbProjectStore implements ProjectStore {
   private durabilityPromise: Promise<StorageDurability> | null = null
+  private readonly projectId: ProjectId
+
+  constructor(projectId: ProjectId = createProjectId(ACTIVE_PROJECT_KEY)) {
+    this.projectId = projectId
+  }
 
   async load(): Promise<LoadProjectResult> {
     const database = new ProjectDatabase()
     try {
       await database.open()
       const [rawProject, rawAssets] = await Promise.all([
-        database.projects.get(ACTIVE_PROJECT_KEY),
+        database.projects.get(this.projectId),
         database.assets.toArray(),
       ])
       if (rawProject === undefined) return { kind: "empty" }
@@ -76,7 +55,8 @@ export class IndexedDbProjectStore implements ProjectStore {
       return validation.kind === "valid"
         ? { kind: "loaded", snapshot: validation.value }
         : { kind: "corrupt" }
-    } catch {
+    } catch (error) {
+      if (!(error instanceof Error)) throw error
       return classifyLoadFailure(database)
     } finally {
       database.close()
@@ -84,14 +64,21 @@ export class IndexedDbProjectStore implements ProjectStore {
   }
 
   async save(snapshot: ProjectSnapshot): Promise<SaveProjectResult> {
-    const project = createStoredProject(snapshot.document, Date.now())
+    const updatedAt = Date.now()
+    const project = createStoredProject(snapshot.document, updatedAt)
     const validation = validateProjectSnapshot(project, snapshot.localAssets, BUILT_IN_ASSET_IDS)
     if (validation.kind === "corrupt") return { kind: "error" }
 
     const database = new ProjectDatabase()
     try {
       await database.open()
-      await writeSnapshot(database, project, validation.value)
+      await writeSnapshot({
+        database,
+        projectId: this.projectId,
+        project,
+        snapshot: validation.value,
+        updatedAt,
+      })
       return { kind: "saved", durability: await this.resolveDurability() }
     } catch (error) {
       if (database.versionChanged) return { kind: "reload_required" }
@@ -108,39 +95,44 @@ export class IndexedDbProjectStore implements ProjectStore {
   }
 }
 
-async function migrateDatabase(transaction: Transaction): Promise<void> {
-  await transaction
-    .table<unknown, string>(PROJECTS_STORE)
-    .toCollection()
-    .modify((value, context) => {
-      const migrated = migrateStoredProject(value)
-      if (migrated.kind === "corrupt") throw new CorruptStoredRecordError("项目记录无法迁移")
-      context.value = migrated.value
-    })
-  await transaction
-    .table<unknown, string>(ASSETS_STORE)
-    .toCollection()
-    .modify((value, context) => {
-      const migrated = migrateStoredLocalAsset(value)
-      if (migrated.kind === "corrupt") throw new CorruptStoredRecordError("素材记录无法迁移")
-      context.value = migrated.value
-    })
+type SnapshotWrite = {
+  readonly database: ProjectDatabase
+  readonly projectId: ProjectId
+  readonly project: ReturnType<typeof createStoredProject>
+  readonly snapshot: ProjectSnapshot
+  readonly updatedAt: number
 }
 
-async function writeSnapshot(
-  database: ProjectDatabase,
-  project: ReturnType<typeof createStoredProject>,
-  snapshot: ProjectSnapshot,
-): Promise<void> {
-  await database.transaction("rw", database.projects, database.assets, async () => {
-    const existingKeys = await database.assets.toCollection().primaryKeys()
-    const retainedIds = new Set(snapshot.localAssets.map((asset) => String(asset.id)))
-    await database.projects.put(project, ACTIVE_PROJECT_KEY)
-    for (const asset of snapshot.localAssets) await database.assets.put(asset, String(asset.id))
-    await database.assets.bulkDelete(
-      existingKeys.filter((key) => typeof key !== "string" || !retainedIds.has(key)),
-    )
-  })
+async function writeSnapshot({
+  database,
+  projectId,
+  project,
+  snapshot,
+  updatedAt,
+}: SnapshotWrite): Promise<void> {
+  await database.transaction(
+    "rw",
+    database.projects,
+    database.assets,
+    database.projectMetadata,
+    async () => {
+      const rawMetadata = await database.projectMetadata.get(projectId)
+      const parsedMetadata = parseStoredProjectMetadata(rawMetadata)
+      const metadata = createStoredProjectMetadata({
+        id: projectId,
+        name: parsedMetadata.kind === "valid" ? parsedMetadata.value.name : "未命名设计",
+        createdAt: parsedMetadata.kind === "valid" ? parsedMetadata.value.createdAt : updatedAt,
+        updatedAt,
+        coverAssetId: project.document.backgroundAssetId,
+      })
+      await database.projects.put(project, projectId)
+      await database.projectMetadata.put(metadata, projectId)
+      const storedAssetIds = new Set(await database.assets.toCollection().primaryKeys())
+      for (const asset of selectUnstoredLocalAssets(snapshot.localAssets, storedAssetIds)) {
+        await database.assets.put(asset, asset.id)
+      }
+    },
+  )
 }
 
 function isQuotaExceeded(error: unknown): boolean {
@@ -165,7 +157,8 @@ async function requestStorageDurability(): Promise<StorageDurability> {
   try {
     if (await storage.persisted()) return "persistent"
     return (await storage.persist()) ? "persistent" : "best_effort"
-  } catch {
+  } catch (error) {
+    if (!(error instanceof Error)) throw error
     return "best_effort"
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 export type EditorViewport = "desktop" | "tablet" | "phone"
 export type RightPanelMode = "closed" | "layers" | "properties" | "both"
@@ -36,7 +36,7 @@ export function useEditorPanels() {
     setTemporarilyHidden(false)
   }, [viewport])
 
-  function toggleTemporary(): void {
+  const toggleTemporary = useCallback((): void => {
     if (temporarilyHidden) {
       setAssetsOpen(snapshot.current.assetsOpen)
       setRightPanel(snapshot.current.rightPanel)
@@ -46,40 +46,59 @@ export function useEditorPanels() {
       setRightPanel("closed")
     }
     setTemporarilyHidden((hidden) => !hidden)
-  }
+  }, [assetsOpen, rightPanel, temporarilyHidden])
 
-  function openAssets(): void {
+  const openAssets = useCallback((): void => {
     setAssetsOpen(true)
     if (viewport !== "desktop") setRightPanel("closed")
     setTemporarilyHidden(false)
-  }
+  }, [viewport])
 
-  function openRightPanel(mode: "layers" | "properties"): void {
-    setRightPanel(mode)
-    if (viewport !== "desktop") setAssetsOpen(false)
-    setTemporarilyHidden(false)
-  }
+  const openRightPanel = useCallback(
+    (mode: "layers" | "properties"): void => {
+      setRightPanel(mode)
+      if (viewport !== "desktop") setAssetsOpen(false)
+      setTemporarilyHidden(false)
+    },
+    [viewport],
+  )
 
-  function toggleAssets(): void {
+  const toggleAssets = useCallback((): void => {
     setAssetsOpen((open) => {
       const next = !open
       if (next && viewport !== "desktop") setRightPanel("closed")
       return next
     })
     setTemporarilyHidden(false)
-  }
+  }, [viewport])
 
-  return {
-    viewport,
-    assetsOpen,
-    rightPanel,
-    closeAssets: () => setAssetsOpen(false),
-    closeRightPanel: () => setRightPanel("closed"),
-    openAssets,
-    openRightPanel,
-    toggleAssets,
-    toggleTemporary,
-  }
+  const closeAssets = useCallback(() => setAssetsOpen(false), [])
+  const closeRightPanel = useCallback(() => setRightPanel("closed"), [])
+
+  return useMemo(
+    () => ({
+      viewport,
+      assetsOpen,
+      rightPanel,
+      closeAssets,
+      closeRightPanel,
+      openAssets,
+      openRightPanel,
+      toggleAssets,
+      toggleTemporary,
+    }),
+    [
+      assetsOpen,
+      closeAssets,
+      closeRightPanel,
+      openAssets,
+      openRightPanel,
+      rightPanel,
+      toggleAssets,
+      toggleTemporary,
+      viewport,
+    ],
+  )
 }
 
 function readViewport(): EditorViewport {

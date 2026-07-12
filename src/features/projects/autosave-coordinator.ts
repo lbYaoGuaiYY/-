@@ -21,6 +21,8 @@ export class AutosaveCoordinator<T> {
   private pending: T | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   private drainPromise: Promise<void> | null = null
+  private disposePromise: Promise<void> | null = null
+  private disposed = false
   private status: AutosaveStatus = { kind: "idle" }
 
   constructor(options: AutosaveCoordinatorOptions<T>) {
@@ -34,6 +36,7 @@ export class AutosaveCoordinator<T> {
   }
 
   schedule(snapshot: T): void {
+    if (this.disposed) return
     this.pending = snapshot
     this.updateStatus({ kind: "saving" })
     this.clearTimer()
@@ -49,6 +52,7 @@ export class AutosaveCoordinator<T> {
     this.clearTimer()
     if (this.drainPromise !== null) {
       await this.drainPromise
+      if (this.pending !== null) await this.flush()
       return
     }
 
@@ -61,9 +65,13 @@ export class AutosaveCoordinator<T> {
     }
   }
 
-  dispose(): void {
+  dispose(): Promise<void> {
+    if (this.disposePromise !== null) return this.disposePromise
+    this.disposed = true
     this.clearTimer()
-    this.pending = null
+    const disposePromise = this.flush()
+    this.disposePromise = disposePromise
+    return disposePromise
   }
 
   private async drain(): Promise<void> {
@@ -71,7 +79,8 @@ export class AutosaveCoordinator<T> {
       const snapshot = this.pending
       this.pending = null
       try {
-        const result = await this.saveSnapshot(snapshot)
+        let result = await this.saveSnapshot(snapshot)
+        if (result.kind === "error") result = await this.saveSnapshot(snapshot)
         this.updateStatus(
           result.kind === "saved"
             ? { kind: "saved", durability: result.durability }

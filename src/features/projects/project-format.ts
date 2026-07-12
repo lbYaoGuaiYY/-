@@ -10,6 +10,10 @@ import {
 
 export const PROJECT_SCHEMA_VERSION = 2 as const
 export const ACTIVE_PROJECT_KEY = "active" as const
+export const PROJECT_METADATA_SCHEMA_VERSION = 1 as const
+
+export const ProjectIdSchema = z.string().trim().min(1).brand("ProjectId")
+export type ProjectId = z.infer<typeof ProjectIdSchema>
 
 const ImageMimeTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp"])
 const LegacyEditorDocumentSchema = EditorDocumentSchema.extend({
@@ -35,9 +39,20 @@ const StoredLocalAssetV1Schema = z.object({
 const StoredLocalAssetV2Schema = StoredLocalAssetV1Schema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
 })
+const StoredProjectMetadataSchema = z.object({
+  schemaVersion: z.literal(PROJECT_METADATA_SCHEMA_VERSION),
+  id: ProjectIdSchema,
+  name: z.string().trim().min(1).max(80),
+  createdAt: z.number().finite().nonnegative(),
+  updatedAt: z.number().finite().nonnegative(),
+  coverAssetId: AssetIdSchema.nullable(),
+})
 
 export type StoredProjectRecord = z.infer<typeof StoredProjectV2Schema>
 export type StoredLocalAssetRecord = z.infer<typeof StoredLocalAssetV2Schema>
+export type StoredProjectMetadata = z.infer<typeof StoredProjectMetadataSchema>
+
+export type ProjectMetadataInput = Omit<StoredProjectMetadata, "schemaVersion">
 
 export type ProjectSnapshot = {
   readonly document: EditorDocument
@@ -54,6 +69,21 @@ export type ProjectValidationResult =
 
 export function parseStoredProject(value: unknown): ParseResult<StoredProjectRecord> {
   return parseSchema(StoredProjectV2Schema, value)
+}
+
+export function parseStoredProjectMetadata(value: unknown): ParseResult<StoredProjectMetadata> {
+  return parseSchema(StoredProjectMetadataSchema, value)
+}
+
+export function createProjectId(value: string): ProjectId {
+  return ProjectIdSchema.parse(value)
+}
+
+export function createStoredProjectMetadata(input: ProjectMetadataInput): StoredProjectMetadata {
+  return StoredProjectMetadataSchema.parse({
+    schemaVersion: PROJECT_METADATA_SCHEMA_VERSION,
+    ...input,
+  })
 }
 
 export function migrateStoredProject(value: unknown): ParseResult<StoredProjectRecord> {

@@ -45,6 +45,21 @@ function shortcutEvent(overrides: Partial<ShortcutKeyEvent> = {}): ShortcutKeyEv
 }
 
 describe("history store", () => {
+  it("keeps only the newest 100 undo snapshots", () => {
+    // Given
+    let history = createHistory<Revision>({ value: 0 })
+
+    // When
+    for (let value = 1; value <= 101; value += 1) {
+      history = commitHistory(history, { value })
+    }
+
+    // Then
+    expect(history.past).toHaveLength(100)
+    expect(history.past[0]).toEqual({ value: 1 })
+    expect(history.past.at(-1)).toEqual({ value: 100 })
+  })
+
   it("moves snapshots through past, present and future", () => {
     // Given
     const first: Revision = { value: 0 }
@@ -172,6 +187,21 @@ describe("editor shortcuts", () => {
     expect(deletion).toBe(EDITOR_SHORTCUT.deleteSelection)
     expect(raised).toBe(EDITOR_SHORTCUT.layerUp)
     expect(sentBack).toBe(EDITOR_SHORTCUT.layerToBack)
+  })
+
+  it("maps copy, paste, cut and duplicate combinations", () => {
+    expect(resolveEditorShortcut(shortcutEvent({ key: "c", ctrlKey: true }))).toBe(
+      EDITOR_SHORTCUT.copySelection,
+    )
+    expect(resolveEditorShortcut(shortcutEvent({ key: "v", metaKey: true }))).toBe(
+      EDITOR_SHORTCUT.pasteSelection,
+    )
+    expect(resolveEditorShortcut(shortcutEvent({ key: "x", ctrlKey: true }))).toBe(
+      EDITOR_SHORTCUT.cutSelection,
+    )
+    expect(resolveEditorShortcut(shortcutEvent({ key: "d", metaKey: true }))).toBe(
+      EDITOR_SHORTCUT.duplicateSelection,
+    )
   })
 
   it("leaves native editing shortcuts to editable targets", () => {

@@ -1,12 +1,13 @@
 import { defineConfig } from "@playwright/test"
 
-const appUrl = "http://127.0.0.1:4173"
+const appUrl = "http://127.0.0.1:4175"
 
 export default defineConfig({
   expect: {
     timeout: 5_000,
   },
   fullyParallel: true,
+  workers: 4,
   outputDir: "test-results/playwright",
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   retries: 0,
@@ -23,8 +24,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
   },
   webServer: {
-    command: "corepack pnpm dev --host 127.0.0.1 --port 4173",
-    reuseExistingServer: true,
+    command: "corepack pnpm dev:e2e --host 127.0.0.1 --port 4175",
+    reuseExistingServer: false,
     timeout: 120_000,
     url: appUrl,
   },

@@ -1,4 +1,4 @@
-import type { Canvas, FabricImage } from "fabric"
+import type { Canvas, FabricImage, FabricObject } from "fabric"
 
 import type { LayerId } from "./editor-model"
 
@@ -9,20 +9,65 @@ class UnexpectedLayerDirectionError extends Error {
 }
 
 export function moveFabricSelection(canvas: Canvas, direction: LayerDirection): boolean {
-  const object = canvas.getActiveObject()
-  if (object === undefined) return false
+  const selectedObjects = canvas.getActiveObjects()
+  if (selectedObjects.length === 0) return false
+  const selected = new Set<FabricObject>(selectedObjects)
+  const current = canvas.getObjects()
+  let next: FabricObject[]
   switch (direction) {
     case "up":
-      return canvas.bringObjectForward(object)
+      next = [...current]
+      for (let index = next.length - 2; index >= 0; index -= 1) {
+        const object = next[index]
+        const following = next[index + 1]
+        if (
+          object !== undefined &&
+          following !== undefined &&
+          selected.has(object) &&
+          !selected.has(following)
+        ) {
+          next[index] = following
+          next[index + 1] = object
+        }
+      }
+      break
     case "down":
-      return canvas.sendObjectBackwards(object)
+      next = [...current]
+      for (let index = 1; index < next.length; index += 1) {
+        const object = next[index]
+        const previous = next[index - 1]
+        if (
+          object !== undefined &&
+          previous !== undefined &&
+          selected.has(object) &&
+          !selected.has(previous)
+        ) {
+          next[index] = previous
+          next[index - 1] = object
+        }
+      }
+      break
     case "front":
-      return canvas.moveObjectTo(object, canvas.getObjects().length - 1)
+      next = [
+        ...current.filter((object) => !selected.has(object)),
+        ...current.filter((object) => selected.has(object)),
+      ]
+      break
     case "back":
-      return canvas.moveObjectTo(object, 0)
+      next = [
+        ...current.filter((object) => selected.has(object)),
+        ...current.filter((object) => !selected.has(object)),
+      ]
+      break
     default:
       throw new UnexpectedLayerDirectionError(`Unexpected layer direction: ${String(direction)}`)
   }
+  if (current.every((object, index) => object === next[index])) return false
+  next.forEach((object, index) => {
+    canvas.moveObjectTo(object, index)
+  })
+  canvas.requestRenderAll()
+  return true
 }
 
 export function reorderFabricLayers(
