@@ -1,9 +1,1 @@
-web_search = "live"
-
-[features]
-multi_agent = true
-use_agent_identity = true
-
-[features.multi_agent_v2]
-enabled = true
-root_agent_usage_hint_text = "When spawning a configured custom agent role, set fork_turns to none because full-history forks inherit the parent agent type and reject role overrides."
+﻿web_search = "live"
