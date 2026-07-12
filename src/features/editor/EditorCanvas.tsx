@@ -10,6 +10,13 @@ import { useEffect, useRef } from "react"
 
 import { EDITOR_CANVAS_DROP_ID } from "./drag-placement"
 import type { EditorController } from "./editor-controller"
+import {
+  distanceBetweenTouchPoints,
+  getPinchZoomPercent,
+  getTouchPanScrollPosition,
+  type TouchPanStart,
+  type TouchPoint,
+} from "./editor-touch-gestures"
 
 export type EditorCanvasProps = {
   readonly backgroundLoaded: boolean
@@ -71,6 +78,105 @@ export function EditorCanvas({
     }
     stageElement.addEventListener("wheel", handleWheel, { passive: false })
     return () => stageElement.removeEventListener("wheel", handleWheel)
+  }, [])
+
+  useEffect(() => {
+    const scrollElement = stageScrollRef.current
+    if (scrollElement === null) return
+
+    const pointers = new Map<number, TouchPoint>()
+    let gestureMode: "pan" | "fabric" | null = null
+    let panStart: TouchPanStart | null = null
+    let pinchStart: { readonly distance: number; readonly zoomPercent: number } | null = null
+
+    const stopGesture = (event?: PointerEvent): void => {
+      if (event !== undefined && scrollElement.hasPointerCapture(event.pointerId)) {
+        scrollElement.releasePointerCapture(event.pointerId)
+      }
+      if (event === undefined || !pointers.has(event.pointerId)) {
+        pointers.clear()
+      } else {
+        pointers.delete(event.pointerId)
+      }
+      if (pointers.size === 0) {
+        gestureMode = null
+        panStart = null
+        pinchStart = null
+        scrollElement.classList.remove("is-panning")
+      }
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.pointerType !== "touch") return
+      if (pointers.size === 0) {
+        gestureMode = controllerRef.current?.hasObjectAtPointer(event) ? "fabric" : "pan"
+        panStart = {
+          left: scrollElement.scrollLeft,
+          top: scrollElement.scrollTop,
+          x: event.clientX,
+          y: event.clientY,
+        }
+      }
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (gestureMode !== "pan") return
+      event.preventDefault()
+      scrollElement.setPointerCapture(event.pointerId)
+      scrollElement.classList.add("is-panning")
+      if (pointers.size === 2) {
+        const [first, second] = Array.from(pointers.values())
+        if (first !== undefined && second !== undefined) {
+          pinchStart = {
+            distance: distanceBetweenTouchPoints(first, second),
+            zoomPercent: controllerRef.current?.getSnapshot().zoomPercent ?? 100,
+          }
+        }
+      }
+    }
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (event.pointerType !== "touch" || gestureMode !== "pan") return
+      if (!pointers.has(event.pointerId)) return
+      event.preventDefault()
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (pointers.size >= 2 && pinchStart !== null) {
+        const [first, second] = Array.from(pointers.values())
+        if (first !== undefined && second !== undefined) {
+          const currentZoom = controllerRef.current?.getSnapshot().zoomPercent ?? 100
+          const nextZoom = getPinchZoomPercent(
+            pinchStart.distance,
+            distanceBetweenTouchPoints(first, second),
+            pinchStart.zoomPercent,
+          )
+          controllerRef.current?.zoomBy(nextZoom - currentZoom)
+        }
+        return
+      }
+      if (pointers.size === 1 && panStart !== null) {
+        const nextPosition = getTouchPanScrollPosition(panStart, {
+          x: event.clientX,
+          y: event.clientY,
+        })
+        scrollElement.scrollLeft = nextPosition.left
+        scrollElement.scrollTop = nextPosition.top
+      }
+    }
+
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (event.pointerType !== "touch") return
+      stopGesture(event)
+    }
+
+    scrollElement.addEventListener("pointerdown", handlePointerDown, { capture: true })
+    scrollElement.addEventListener("pointermove", handlePointerMove, { capture: true })
+    scrollElement.addEventListener("pointerup", handlePointerUp, { capture: true })
+    scrollElement.addEventListener("pointercancel", handlePointerUp, { capture: true })
+    return () => {
+      scrollElement.removeEventListener("pointerdown", handlePointerDown, { capture: true })
+      scrollElement.removeEventListener("pointermove", handlePointerMove, { capture: true })
+      scrollElement.removeEventListener("pointerup", handlePointerUp, { capture: true })
+      scrollElement.removeEventListener("pointercancel", handlePointerUp, { capture: true })
+      stopGesture()
+    }
   }, [])
 
   useEffect(() => {

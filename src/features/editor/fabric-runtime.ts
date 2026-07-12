@@ -207,6 +207,10 @@ export class FabricRuntime {
     })
   }
 
+  hasObjectAtPointer(event: PointerEvent): boolean {
+    return this.canvas.findTarget(event).target !== undefined
+  }
+
   selectLayer(id: LayerId, additive = false): boolean {
     const object = this.layerObjects.get(id)
     const meta = this.layerMeta.get(id)

@@ -126,6 +126,7 @@
     8px -8px,
     -8px 0;
   background-size: 16px 16px;
+  touch-action: none;
 }
 
 .stage-scroll {

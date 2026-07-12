@@ -135,6 +135,10 @@ export class EditorController {
     this.updateZoomState(this.runtime.fitDisplay())
   }
 
+  hasObjectAtPointer(event: PointerEvent): boolean {
+    return this.runtime.hasObjectAtPointer(event)
+  }
+
   private updateZoomState(scale: number): void {
     const zoomPercent = Math.round(scale * 100)
     this.state = createEditorViewState(
