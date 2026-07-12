@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from tools.asset_admin.cloud_server import CloudSettings, create_app
+from tools.asset_admin.cloud_server import CloudSettings, create_app, load_settings
 
 
 def test_publish_and_read_asset_when_tokens_are_valid(tmp_path: Path) -> None:
@@ -47,7 +47,61 @@ def test_publish_and_read_asset_when_tokens_are_valid(tmp_path: Path) -> None:
     )
     assert catalog.status_code == 200
     assert catalog.json()["assets"][0]["id"] == asset_id
+    assert catalog.headers["x-catalog-revision"] == "2"
+    assert catalog.headers["etag"]
+    unchanged = client.get(
+        "/api/v1/assets",
+        headers={
+            "Authorization": "Bearer editor-secret",
+            "If-None-Match": f'W/{catalog.headers["etag"]}, "stale"',
+        },
+    )
+    assert unchanged.status_code == 304
+    revision = client.get(
+        "/api/v1/catalog/revision",
+        headers={"Authorization": "Bearer editor-secret"},
+    )
+    assert revision.status_code == 200
+    assert revision.json() == {"revision": 2}
+    unchanged_revision = client.get(
+        "/api/v1/catalog/revision",
+        headers={
+            "Authorization": "Bearer editor-secret",
+            "If-None-Match": revision.headers["etag"],
+        },
+    )
+    assert unchanged_revision.status_code == 304
+    patched = client.patch(
+        f"/api/v1/admin/assets/{asset_id}",
+        headers={"Authorization": "Bearer admin-secret"},
+        json={"name": "云端花艺改名"},
+    )
+    assert patched.status_code == 200
+    changed_catalog = client.get(
+        "/api/v1/assets",
+        headers={
+            "Authorization": "Bearer editor-secret",
+            "If-None-Match": catalog.headers["etag"],
+        },
+    )
+    assert changed_catalog.status_code == 200
+    assert changed_catalog.headers["x-catalog-revision"] == "3"
+    assert changed_catalog.headers["etag"] != catalog.headers["etag"]
     assert client.get("/api/v1/assets").status_code == 401
+
+
+def test_factory_loads_environment_settings(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("QINGSHE_ASSET_LIBRARY", str(tmp_path))
+    monkeypatch.setenv("QINGSHE_EDITOR_TOKEN", "editor-from-env")
+    monkeypatch.setenv("QINGSHE_ADMIN_TOKEN", "admin-from-env")
+    monkeypatch.setenv("QINGSHE_ALLOWED_ORIGINS", "http://localhost:4173, http://tauri.localhost")
+
+    settings = load_settings()
+
+    assert settings.library_root == tmp_path.resolve()
+    assert settings.editor_token == "editor-from-env"
+    assert settings.admin_token == "admin-from-env"
+    assert settings.allowed_origins == ("http://localhost:4173", "http://tauri.localhost")
 
 
 def test_editor_token_cannot_modify_catalog(tmp_path: Path) -> None:

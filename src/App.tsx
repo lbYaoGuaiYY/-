@@ -1,5 +1,10 @@
 import { X } from "@phosphor-icons/react"
-import type { ChangeEvent } from "react"
+import type {
+  ChangeEvent,
+  CSSProperties,
+  PointerEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+} from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { AssetPanel } from "./features/assets/AssetPanel"
@@ -53,6 +58,9 @@ const FALLBACK_VIEW = {
 
 type CanvasContextMenuPosition = Readonly<{ x: number; y: number }>
 
+const PANEL_RESIZER_HEIGHT = 8
+const MIN_RIGHT_PANEL_SECTION_HEIGHT = 120
+
 class UnexpectedShortcutError extends Error {
   readonly name = "UnexpectedShortcutError"
 }
@@ -75,6 +83,60 @@ export function App({ projectId }: AppProps) {
   const projectSession = useProjectSession(controller, projectId)
   const projectMetadata = useProjectMetadata(projectId)
   const assetLibrary = useEditorAssetLibrary()
+
+  const [inspectorHeight, setInspectorHeight] = useState(360)
+  const isResizingRef = useRef(false)
+  const asideRef = useRef<HTMLElement>(null)
+  const resizerPointerIdRef = useRef<number | null>(null)
+
+  function clampInspectorHeight(nextHeight: number): number {
+    const panel = asideRef.current
+    if (panel === null) return nextHeight
+    const availableHeight = panel.getBoundingClientRect().height - PANEL_RESIZER_HEIGHT
+    const minSectionHeight = Math.min(MIN_RIGHT_PANEL_SECTION_HEIGHT, availableHeight / 2)
+    return Math.min(availableHeight - minSectionHeight, Math.max(minSectionHeight, nextHeight))
+  }
+
+  function handleResizerPointerDown(event: PointerEvent<HTMLDivElement>): void {
+    if (panels.viewport !== "desktop") return
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    isResizingRef.current = true
+    resizerPointerIdRef.current = event.pointerId
+    document.body.classList.add("is-resizing-panel")
+  }
+
+  function handleResizerPointerMove(event: PointerEvent<HTMLDivElement>): void {
+    if (
+      !isResizingRef.current ||
+      resizerPointerIdRef.current !== event.pointerId ||
+      asideRef.current === null
+    )
+      return
+    const top = asideRef.current.getBoundingClientRect().top
+    setInspectorHeight(clampInspectorHeight(event.clientY - top))
+  }
+
+  function handleResizerKeyDown(event: ReactKeyboardEvent<HTMLHRElement>): void {
+    const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0
+    if (direction === 0) return
+    event.preventDefault()
+    setInspectorHeight(
+      clampInspectorHeight(inspectorHeight + direction * (event.shiftKey ? 48 : 24)),
+    )
+  }
+
+  function stopResizingPanel(event: PointerEvent<HTMLDivElement>): void {
+    if (resizerPointerIdRef.current !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    isResizingRef.current = false
+    resizerPointerIdRef.current = null
+    document.body.classList.remove("is-resizing-panel")
+  }
+
+  useEffect(() => () => document.body.classList.remove("is-resizing-panel"), [])
 
   const handleEditorReady = useCallback((nextController: EditorController | null) => {
     controllerRef.current = nextController
@@ -370,9 +432,11 @@ export function App({ projectId }: AppProps) {
             />
           </section>
           <aside
+            ref={asideRef}
             className={`side-panel side-panel-right${panels.rightPanel === "closed" ? "" : " is-open"}`}
             data-panel-mode={panels.rightPanel}
             aria-label="属性与图层"
+            style={{ "--inspector-panel-height": `${inspectorHeight}px` } as CSSProperties}
           >
             {showProperties && (
               <InspectorPanel
@@ -383,6 +447,21 @@ export function App({ projectId }: AppProps) {
                 onPreview={previewSelection}
                 onToggleFlip={(axis) => controller?.toggleSelectionFlip(axis)}
                 onUpdate={updateSelection}
+              />
+            )}
+            {showProperties && showLayers && (
+              <hr
+                className="panel-resizer-horizontal"
+                aria-orientation="horizontal"
+                aria-label="调整属性与图层面板高度"
+                aria-valuemin={MIN_RIGHT_PANEL_SECTION_HEIGHT}
+                aria-valuenow={Math.round(inspectorHeight)}
+                tabIndex={0}
+                onPointerDown={handleResizerPointerDown}
+                onPointerMove={handleResizerPointerMove}
+                onPointerUp={stopResizingPanel}
+                onPointerCancel={stopResizingPanel}
+                onKeyDown={handleResizerKeyDown}
               />
             )}
             {showLayers && (

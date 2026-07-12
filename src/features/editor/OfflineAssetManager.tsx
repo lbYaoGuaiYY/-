@@ -59,6 +59,9 @@ export function OfflineAssetManager({
   const currentProjectDefinition = CURRENT_PROJECT_CACHE_PACKAGE
   const currentProjectCachedCount =
     summary === null ? 0 : cachedPackageAssets(currentProjectDefinition, summary, projectIds).length
+  const currentProjectAssets =
+    summary === null ? [] : cachedPackageAssets(currentProjectDefinition, summary, projectIds)
+  const currentProjectPinnedCount = currentProjectAssets.filter((asset) => asset.pinned).length
   const primaryPackages = DOWNLOADABLE_ASSET_PACKAGES.filter(
     (definition) => definition.kind !== "category",
   )
@@ -119,6 +122,31 @@ export function OfflineAssetManager({
     [load, projectIds, summary],
   )
 
+  const pinCurrentProject = useCallback(async (): Promise<void> => {
+    if (projectAssetIds.length === 0) return
+    setIsBusy(true)
+    try {
+      await cacheRef.current?.setPinned(projectAssetIds, true)
+      await load()
+    } catch (error) {
+      setState({ kind: "error", message: offlineAssetCacheErrorMessage(error) })
+    } finally {
+      setIsBusy(false)
+    }
+  }, [load, projectAssetIds])
+
+  const clearUnpinned = useCallback(async (): Promise<void> => {
+    setIsBusy(true)
+    try {
+      await cacheRef.current?.clearUnpinned()
+      await load()
+    } catch (error) {
+      setState({ kind: "error", message: offlineAssetCacheErrorMessage(error) })
+    } finally {
+      setIsBusy(false)
+    }
+  }, [load])
+
   return (
     <div className={`offline-asset-manager__backdrop is-${variant}`}>
       <section
@@ -129,7 +157,7 @@ export function OfflineAssetManager({
       >
         <header className="offline-asset-manager__header">
           <div>
-            <h2 id="offline-asset-manager-title">离线素材</h2>
+            <h2 id="offline-asset-manager-title">离线素材管理</h2>
             <p>按素材包下载；拖拽缩略图后自动加入当前项目缓存包。</p>
           </div>
           <button
@@ -168,6 +196,45 @@ export function OfflineAssetManager({
               onClear={clearPackage}
               onDownload={runPackageDownload}
             />
+            <div className="offline-asset-manager__cache-actions">
+              {currentProjectAssets.length > 0 && (
+                <ul className="offline-asset-manager__list" aria-label="当前项目已缓存素材">
+                  {currentProjectAssets.map((asset) => (
+                    <li
+                      className="offline-asset-manager__item"
+                      key={`${asset.id}@${asset.version}`}
+                    >
+                      <strong>{asset.name}</strong>
+                      <span>{asset.pinned ? "已固定" : "自动缓存"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="offline-asset-manager__package-actions">
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={
+                    isBusy ||
+                    currentProjectAssets.length === 0 ||
+                    currentProjectPinnedCount === currentProjectAssets.length
+                  }
+                  onClick={() => void pinCurrentProject()}
+                >
+                  <span>固定当前项目素材</span>
+                </button>
+                <button
+                  className="text-button is-subtle"
+                  type="button"
+                  disabled={
+                    isBusy || summary === null || summary.pinnedCount === summary.assets.length
+                  }
+                  onClick={() => void clearUnpinned()}
+                >
+                  <span>清理未固定缓存</span>
+                </button>
+              </div>
+            </div>
             <OfflineAssetPackageSection
               title="下载素材包"
               packages={primaryPackages}

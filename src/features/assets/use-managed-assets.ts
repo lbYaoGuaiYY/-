@@ -4,6 +4,7 @@ import type { LibraryAsset } from "./asset-library"
 import { createManagedLibraryAsset, createServiceLibraryAsset } from "./asset-library"
 import {
   ASSET_PAGE_SIZE,
+  getServiceCatalogRevision,
   listServiceAssetPage,
   subscribeToAssetEvents,
 } from "./asset-service-client"
@@ -34,12 +35,25 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
   const [hasMore, setHasMore] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [revision, setRevision] = useState(0)
+  const catalogRevisionRef = useRef<string | null>(null)
   const activeQuery = useRef("")
   const activeFilter = useRef("")
   const refresh = useCallback(() => {
     setStatus("loading")
     setRevision((current) => current + 1)
   }, [])
+  const refreshIfCatalogChanged = useCallback(() => {
+    void getServiceCatalogRevision()
+      .then((nextRevision) => {
+        if (
+          catalogRevisionRef.current === null ||
+          catalogRevisionRef.current !== String(nextRevision)
+        ) {
+          refresh()
+        }
+      })
+      .catch(() => refresh())
+  }, [refresh])
 
   const filterKey = `${query.search}\u0000${query.category}`
   const queryKey = `${filterKey}\u0000${revision}`
@@ -75,6 +89,7 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
             createServiceLibraryAsset(asset, cachedProcessed.get(asset.id)),
           ),
         )
+        catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
         setStatus("ready")
       } catch (error) {
@@ -152,6 +167,7 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
             createServiceLibraryAsset(asset, cachedProcessed.get(asset.id)),
           ),
         ])
+        catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
       } catch (error) {
         if (!(error instanceof Error)) throw error
@@ -165,7 +181,7 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
   useEffect(() => subscribeToAssetEvents(refresh), [refresh])
   useEffect(() => {
     const refreshWhenEditorReturns = (): void => {
-      if (document.visibilityState === "visible") refresh()
+      if (document.visibilityState === "visible") refreshIfCatalogChanged()
     }
     window.addEventListener("focus", refreshWhenEditorReturns)
     document.addEventListener("visibilitychange", refreshWhenEditorReturns)
@@ -173,6 +189,6 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
       window.removeEventListener("focus", refreshWhenEditorReturns)
       document.removeEventListener("visibilitychange", refreshWhenEditorReturns)
     }
-  }, [refresh])
+  }, [refreshIfCatalogChanged])
   return { assets, hasMore, isLoadingMore, loadMore, refresh, status }
 }

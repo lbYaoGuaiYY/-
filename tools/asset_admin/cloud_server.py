@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParameter, Query, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParameter, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -98,6 +98,12 @@ class MutationResponse(BaseModel):
     updated: bool
 
 
+class CatalogRevisionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    revision: int
+
+
 class AssetQuery(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -127,6 +133,16 @@ def load_settings() -> CloudSettings:
     )
 
 
+def etag_matches(header_value: str | None, current_etag: str) -> bool:
+    if header_value is None:
+        return False
+    if header_value.strip() == "*":
+        return True
+    normalized_current = current_etag.removeprefix('W/')
+    return any(
+        candidate.strip().removeprefix("W/") == normalized_current
+        for candidate in header_value.split(",")
+    )
 async def read_publish_files(
     original: Annotated[UploadFile, File()],
     processed: Annotated[UploadFile, File()],
@@ -159,7 +175,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         allow_origins=list(active_settings.allowed_origins),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "If-None-Match"],
+        expose_headers=["ETag", "X-Catalog-Revision"],
     )
 
     def require_editor(
@@ -186,9 +203,21 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ready"}
 
+    @app.get("/api/v1/catalog/revision", dependencies=[Depends(require_editor)])
+    def catalog_revision(request: Request) -> Response:
+        revision = catalog.revision()
+        etag = f'"{revision}"'
+        headers = {"Cache-Control": "no-cache", "ETag": etag}
+        if etag_matches(request.headers.get("if-none-match"), etag):
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+        return JSONResponse(
+            content=CatalogRevisionResponse(revision=revision).model_dump(),
+            headers=headers,
+        )
+
     @app.get("/api/v1/assets", dependencies=[Depends(require_editor)])
-    def list_assets(filters: Annotated[AssetQuery, Query()]) -> AssetsResponse:
-        rows = catalog.list_assets(
+    def list_assets(filters: Annotated[AssetQuery, Query()], request: Request) -> Response:
+        rows, revision = catalog.list_assets_with_revision(
             filters.query,
             filters.category,
             filters.status,
@@ -196,7 +225,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             filters.limit,
             filters.offset,
         )
-        return AssetsResponse(assets=tuple(ServiceAsset.model_validate(row) for row in rows))
+        query_key = json.dumps(filters.model_dump(), ensure_ascii=False, sort_keys=True)
+        etag = f'"{revision}-{hashlib.sha256(query_key.encode("utf-8")).hexdigest()[:16]}"'
+        headers = {
+            "Cache-Control": "no-cache",
+            "ETag": etag,
+            "X-Catalog-Revision": str(revision),
+        }
+        if etag_matches(request.headers.get("if-none-match"), etag):
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+        payload = AssetsResponse(
+            assets=tuple(ServiceAsset.model_validate(row) for row in rows)
+        ).model_dump()
+        return JSONResponse(content=payload, headers=headers)
 
     @app.get("/api/v1/assets/{asset_id}/{kind}", dependencies=[Depends(require_editor)])
     def read_asset(asset_id: str, kind: MediaKind) -> FileResponse:

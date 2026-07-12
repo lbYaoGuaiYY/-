@@ -64,7 +64,10 @@
 
 .side-panel-right {
   display: grid;
-  grid-template-rows: minmax(220px, 0.9fr) minmax(220px, 1.1fr);
+  grid-template-rows:
+    minmax(120px, var(--inspector-panel-height, 0.9fr))
+    8px
+    minmax(120px, 1fr);
   border-left: 1px solid var(--border-default);
 }
 
@@ -202,4 +205,26 @@
 .mobile-tabbar,
 .mobile-panel-close {
   display: none;
+}
+
+body.is-resizing-panel {
+  cursor: ns-resize;
+  user-select: none;
+}
+
+.panel-resizer-horizontal {
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  background: var(--border-default);
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 10;
+  transition: background 120ms ease-out;
+}
+.panel-resizer-horizontal:hover,
+.panel-resizer-horizontal:active,
+.panel-resizer-horizontal:focus-visible {
+  background: var(--accent-primary);
+  outline: 0;
 }

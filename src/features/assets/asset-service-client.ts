@@ -39,6 +39,7 @@ const ServiceJobSchema = z.object({
 })
 const AssetsResponseSchema = z.object({ assets: z.array(ServiceAssetSchema) })
 const JobsResponseSchema = z.object({ jobs: z.array(ServiceJobSchema) })
+const CatalogRevisionResponseSchema = z.object({ revision: z.number().int().nonnegative() })
 const AssetEventPayloadSchema = z.object({ assetId: z.string().uuid() })
 
 export type ServiceAsset = z.infer<typeof ServiceAssetSchema>
@@ -85,6 +86,7 @@ export type ServiceAssetPageQuery = {
 export type ServiceAssetPage = {
   readonly assets: readonly ServiceAsset[]
   readonly hasMore: boolean
+  readonly revision: string | null
 }
 
 const client = ky.create({
@@ -94,6 +96,10 @@ const client = ky.create({
   retry: 0,
 })
 const pendingAssetPages = new Map<string, Promise<ServiceAssetPage>>()
+const cachedAssetPages = new Map<
+  string,
+  { readonly etag: string; readonly page: ServiceAssetPage }
+>()
 
 export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<ServiceAssetPage> {
   const { search, category, status, needsReview, limit, offset } = query
@@ -110,13 +116,24 @@ export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<Serv
       offset: String(offset),
     })
     if (needsReview !== null) searchParams.set("needs_review", needsReview ? "1" : "0")
-    const payload = await client
-      .get("assets", {
-        searchParams,
-      })
-      .json()
+    const cached = cachedAssetPages.get(requestKey)
+    const response = await client.get("assets", {
+      ...(cached === undefined ? {} : { headers: { "If-None-Match": cached.etag } }),
+      searchParams,
+      throwHttpErrors: false,
+    })
+    if (response.status === 304 && cached !== undefined) return cached.page
+    if (!response.ok) throw new Error(`素材服务请求失败（HTTP ${response.status}）`)
+    const payload = await response.json()
     const assets = AssetsResponseSchema.parse(payload).assets
-    return { assets, hasMore: assets.length === limit }
+    const page = {
+      assets,
+      hasMore: assets.length === limit,
+      revision: response.headers.get("X-Catalog-Revision"),
+    }
+    const etag = response.headers.get("ETag")
+    if (etag !== null) cachedAssetPages.set(requestKey, { etag, page })
+    return page
   })()
 
   pendingAssetPages.set(requestKey, request)
@@ -125,6 +142,11 @@ export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<Serv
     () => pendingAssetPages.delete(requestKey),
   )
   return request
+}
+
+export async function getServiceCatalogRevision(): Promise<number> {
+  const payload = await client.get("catalog/revision").json()
+  return CatalogRevisionResponseSchema.parse(payload).revision
 }
 
 export async function listServiceAssets(
@@ -178,6 +200,7 @@ export async function importServiceAsset(file: Blob, name: string): Promise<void
     timeout: 60_000,
   })
   pendingAssetPages.clear()
+  cachedAssetPages.clear()
 }
 
 export async function importServiceAssets(
@@ -225,16 +248,19 @@ export async function patchServiceAsset(
 ): Promise<void> {
   await client.patch(`assets/${assetId}`, { json: changes })
   pendingAssetPages.clear()
+  cachedAssetPages.clear()
 }
 
 export async function deleteServiceAsset(assetId: string): Promise<void> {
   await client.delete(`assets/${assetId}`)
   pendingAssetPages.clear()
+  cachedAssetPages.clear()
 }
 
 export async function restoreServiceAsset(assetId: string): Promise<void> {
   await client.post(`assets/${assetId}/restore`)
   pendingAssetPages.clear()
+  cachedAssetPages.clear()
 }
 
 export async function backupServiceCatalog(): Promise<string> {

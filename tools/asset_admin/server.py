@@ -45,6 +45,18 @@ JOB_RETRY_PATTERN: Final = re.compile(r"^/jobs/([0-9a-f-]+)/retry$")
 ASSET_RESTORE_PATTERN: Final = re.compile(r"^/assets/([0-9a-f-]+)/restore$")
 
 
+def etag_matches(header_value: str | None, current_etag: str) -> bool:
+    if header_value is None:
+        return False
+    if header_value.strip() == "*":
+        return True
+    normalized_current = current_etag.removeprefix("W/")
+    return any(
+        candidate.strip().removeprefix("W/") == normalized_current
+        for candidate in header_value.split(",")
+    )
+
+
 class EventBroker:
     def __init__(self) -> None:
         self._subscribers: set[queue.Queue[str]] = set()
@@ -88,7 +100,7 @@ class AssetRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(HTTPStatus.NO_CONTENT)
         self.send_header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, If-None-Match")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
@@ -96,20 +108,26 @@ class AssetRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/health":
             self._send_json({"status": "ready", "libraryRoot": str(PATHS.root), "categories": CATEGORIES})
             return
+        if parsed.path == "/catalog/revision":
+            revision = str(CATALOG.revision())
+            self._send_conditional_json({"revision": int(revision)}, f'"{revision}"')
+            return
         if parsed.path == "/assets":
             query = urllib.parse.parse_qs(parsed.query)
             review_value = query.get("needs_review", [""])[0]
             if review_value not in {"", "0", "1"}:
                 self.send_error(HTTPStatus.BAD_REQUEST, "needs_review must be 0 or 1")
                 return
-            assets = CATALOG.list_assets(
+            assets, revision = CATALOG.list_assets_with_revision(
                 query.get("query", [""])[0], query.get("category", [""])[0],
                 query.get("status", ["ready"])[0],
                 None if review_value == "" else review_value == "1",
                 self._bounded_integer(query.get("limit", ["200"])[0], 1, 500),
                 self._bounded_integer(query.get("offset", ["0"])[0], 0, 1_000_000),
             )
-            self._send_json({"assets": assets})
+            query_key = json.dumps(query, ensure_ascii=False, sort_keys=True)
+            etag = f'"{revision}-{hashlib.sha256(query_key.encode("utf-8")).hexdigest()[:16]}"'
+            self._send_conditional_json({"assets": assets}, etag, revision)
             return
         if parsed.path == "/jobs":
             self._send_json({"jobs": CATALOG.list_jobs()})
@@ -199,6 +217,7 @@ class AssetRequestHandler(BaseHTTPRequestHandler):
         if origin in ALLOWED_ORIGINS:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Expose-Headers", "ETag, X-Catalog-Revision")
         super().end_headers()
 
     def log_message(self, format_string: str, *args: object) -> None:
@@ -282,6 +301,28 @@ class AssetRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_conditional_json(
+        self, payload: object, etag: str, revision: int | None = None
+    ) -> None:
+        if etag_matches(self.headers.get("If-None-Match"), etag):
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("ETag", etag)
+            if revision is not None:
+                self.send_header("X-Catalog-Revision", str(revision))
+            self.end_headers()
+            return
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("ETag", etag)
+        if revision is not None:
+            self.send_header("X-Catalog-Revision", str(revision))
         self.end_headers()
         self.wfile.write(body)
 

@@ -100,6 +100,25 @@ class Catalog:
                     "CREATE VIRTUAL TABLE IF NOT EXISTS assets_fts USING fts5(asset_id UNINDEXED, name, code, category, tags)"
                 )
             self._connection.execute("UPDATE jobs SET status='pending' WHERE status='processing'")
+            self._connection.execute(
+                "INSERT INTO meta(key,value) VALUES('catalog_revision','0') "
+                "ON CONFLICT(key) DO NOTHING"
+            )
+
+    def revision(self) -> int:
+        with self._lock:
+            return self._revision_unlocked()
+
+    def _revision_unlocked(self) -> int:
+        row = self._connection.execute(
+            "SELECT value FROM meta WHERE key='catalog_revision'"
+        ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def _bump_revision(self) -> None:
+        self._connection.execute(
+            "UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='catalog_revision'"
+        )
 
     def create_asset(self, *, name: str, mime_type: str, content_hash: str, original_path: Path) -> dict[str, Any]:
         created_at = now_iso()
@@ -133,6 +152,7 @@ class Catalog:
                 "INSERT INTO jobs(id,asset_id,status,created_at,updated_at) VALUES(?,?,?,?,?)",
                 (job_id, asset_id, "pending", created_at, created_at),
             )
+            self._bump_revision()
             return {"id": asset_id, "code": code, "job_id": job_id, "duplicate": False}
 
     def list_assets(
@@ -144,6 +164,20 @@ class Catalog:
         limit: int,
         offset: int,
     ) -> list[dict[str, Any]]:
+        assets, _revision = self.list_assets_with_revision(
+            query, category, status, needs_review, limit, offset
+        )
+        return assets
+
+    def list_assets_with_revision(
+        self,
+        query: str,
+        category: str,
+        status: str,
+        needs_review: bool | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
         clauses = ["a.status='deleted'" if status == "deleted" else "a.status!='deleted'"]
         parameters: list[object] = []
         join = ""
@@ -166,7 +200,8 @@ class Catalog:
                 f"SELECT a.* FROM assets a {join} WHERE {' AND '.join(clauses)} ORDER BY a.updated_at DESC LIMIT ? OFFSET ?",
                 parameters,
             ).fetchall()
-        return [self._public_asset(row) for row in rows]
+            revision = self._revision_unlocked()
+        return [self._public_asset(row) for row in rows], revision
 
     def list_jobs(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -202,18 +237,22 @@ class Catalog:
             asset = self._connection.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
             if asset is not None:
                 self._index_asset(asset)
+                self._bump_revision()
 
     def fail_job(self, job_id: str, asset_id: str, message: str) -> None:
         updated_at = now_iso()
         with self._lock, self._connection:
             self._connection.execute("UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=?", (message[:500], updated_at, job_id))
-            self._connection.execute("UPDATE assets SET status='failed',updated_at=? WHERE id=?", (updated_at, asset_id))
+            cursor = self._connection.execute("UPDATE assets SET status='failed',updated_at=? WHERE id=?", (updated_at, asset_id))
+            if cursor.rowcount:
+                self._bump_revision()
 
     def retry_job(self, job_id: str) -> bool:
         with self._lock, self._connection:
             cursor = self._connection.execute("UPDATE jobs SET status='pending',error=NULL,updated_at=? WHERE id=? AND status='failed'", (now_iso(), job_id))
             if cursor.rowcount:
                 self._connection.execute("UPDATE assets SET status='processing',updated_at=? WHERE id=(SELECT asset_id FROM jobs WHERE id=?)", (now_iso(), job_id))
+                self._bump_revision()
             return cursor.rowcount > 0
 
     def patch_asset(self, asset_id: str, changes: dict[str, object]) -> bool:
@@ -226,14 +265,26 @@ class Catalog:
             row = self._connection.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
             if row is not None:
                 self._index_asset(row)
+            if cursor.rowcount:
+                self._bump_revision()
             return cursor.rowcount > 0
 
     def set_deleted(self, asset_id: str, deleted: bool) -> bool:
         with self._lock, self._connection:
+            existing = self._connection.execute(
+                "SELECT status FROM assets WHERE id=?", (asset_id,)
+            ).fetchone()
+            if existing is None:
+                return False
+            next_status = "deleted" if deleted else "ready"
+            if existing["status"] == next_status:
+                return False
             cursor = self._connection.execute(
                 "UPDATE assets SET status=?,deleted_at=?,updated_at=? WHERE id=?",
-                ("deleted" if deleted else "ready", now_iso() if deleted else None, now_iso(), asset_id),
+                (next_status, now_iso() if deleted else None, now_iso(), asset_id),
             )
+            if cursor.rowcount:
+                self._bump_revision()
             return cursor.rowcount > 0
 
     def set_deleted_by_content_hash(self, content_hash: str) -> bool:
@@ -242,6 +293,8 @@ class Catalog:
                 "UPDATE assets SET status='deleted',deleted_at=?,updated_at=? WHERE content_hash=?",
                 (now_iso(), now_iso(), content_hash),
             )
+            if cursor.rowcount:
+                self._bump_revision()
             return cursor.rowcount > 0
 
     def asset_path(self, asset_id: str, kind: str) -> Path | None:
