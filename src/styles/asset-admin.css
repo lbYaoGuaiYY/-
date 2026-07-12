@@ -1,0 +1,462 @@
+.asset-admin-shell {
+  min-height: 100dvh;
+  padding: var(--space-4);
+  background: var(--surface-app);
+  color: var(--text-primary);
+}
+
+.asset-admin-header,
+.asset-admin-section-header,
+.asset-admin-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.asset-admin-header {
+  min-height: 48px;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.asset-admin-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.asset-admin-product {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.asset-admin-header h1,
+.asset-admin-section-header h2 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.asset-admin-header h1,
+.asset-admin-section-header span,
+.asset-admin-note {
+  color: var(--text-secondary);
+}
+
+.asset-admin-back,
+.asset-admin-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.asset-admin-workspace {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.asset-admin-section,
+.asset-admin-review,
+.asset-admin-inventory {
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.asset-admin-section,
+.asset-admin-review {
+  min-height: 0;
+}
+
+.asset-admin-section,
+.asset-admin-inventory {
+  padding: var(--space-3);
+}
+
+.asset-admin-section-header {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.asset-admin-section > .asset-admin-section-header,
+.asset-admin-inventory > .asset-admin-section-header {
+  margin: calc(var(--space-3) * -1) calc(var(--space-3) * -1) var(--space-3);
+}
+
+.asset-admin-file-button {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.asset-admin-field {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.asset-admin-field input,
+.asset-admin-field select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.asset-admin-actions {
+  margin-top: var(--space-4);
+}
+
+.asset-admin-actions button {
+  min-height: 32px;
+  flex: 1;
+}
+
+.asset-admin-note,
+.asset-admin-error {
+  margin: var(--space-3) 0 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.asset-admin-error {
+  color: var(--status-error);
+}
+
+.asset-admin-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.asset-admin-preview {
+  min-width: 0;
+  margin: 0;
+}
+
+.asset-admin-preview figcaption {
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.asset-admin-preview > div,
+.asset-admin-inventory-preview {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  background: var(--canvas-white);
+}
+
+.asset-admin-preview > div {
+  aspect-ratio: 4 / 3;
+}
+
+.asset-admin-preview.is-transparent > div,
+.asset-admin-inventory-preview {
+  background-color: var(--canvas-white);
+  background-image:
+    linear-gradient(45deg, var(--surface-control) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface-control) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface-control) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface-control) 75%);
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.asset-admin-preview img,
+.asset-admin-inventory-preview img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.asset-admin-preview-empty {
+  display: grid;
+  place-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.asset-admin-inventory {
+  margin-top: var(--space-4);
+}
+
+.asset-admin-inventory-grid {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.asset-admin-inventory-grid li {
+  display: grid;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  background: var(--surface-control);
+}
+
+.asset-admin-inventory-preview {
+  aspect-ratio: 4 / 3;
+  margin-bottom: var(--space-2);
+}
+
+.asset-admin-inventory-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-admin-ingestion {
+  position: fixed;
+  top: 84px;
+  left: var(--space-4);
+  width: 320px;
+  max-height: calc(100dvh - 104px);
+  overflow: auto;
+}
+
+.asset-admin-catalog {
+  min-height: calc(100dvh - 104px);
+  margin-left: 336px;
+}
+
+.asset-admin-section-header > div,
+.asset-admin-jobs,
+.asset-admin-job {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.asset-admin-filters,
+.asset-admin-batch-bar,
+.asset-admin-maintenance-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.asset-admin-section-header > .asset-admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.asset-admin-maintenance-actions {
+  margin-top: var(--space-3);
+}
+
+.asset-admin-maintenance-actions > button {
+  flex: 1;
+}
+
+.asset-admin-filters .is-active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.asset-admin-filters input,
+.asset-admin-filters select,
+.asset-admin-batch-bar select {
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.asset-admin-jobs {
+  margin-top: var(--space-3);
+}
+
+.asset-admin-job {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  background: var(--surface-control);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.asset-admin-job.is-failed {
+  border-color: var(--status-error);
+}
+
+.asset-admin-batch-bar {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--accent-primary);
+  background: var(--surface-control);
+}
+
+.asset-admin-catalog-grid {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.asset-admin-catalog-grid li {
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  background: var(--surface-control);
+}
+
+.asset-admin-catalog-grid li.is-selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.asset-admin-catalog-grid button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.asset-admin-catalog-preview {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  margin-bottom: var(--space-2);
+  place-items: center;
+  background-color: var(--canvas-white);
+  background-image:
+    linear-gradient(45deg, var(--surface-control) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface-control) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface-control) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface-control) 75%);
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.asset-admin-catalog-preview img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.asset-admin-catalog-name,
+.asset-admin-catalog-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-admin-catalog-name {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.asset-admin-catalog-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.asset-admin-empty {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+
+@media (max-width: 899px) {
+  .asset-admin-workspace,
+  .asset-admin-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-admin-ingestion {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin-bottom: var(--space-3);
+  }
+
+  .asset-admin-catalog {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 699px) {
+  .asset-admin-shell {
+    padding: var(--space-2);
+  }
+
+  .asset-admin-header {
+    align-items: flex-start;
+  }
+
+  .asset-admin-back {
+    min-height: 44px;
+  }
+
+  .asset-admin-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .asset-admin-actions button {
+    min-height: 44px;
+  }
+}
