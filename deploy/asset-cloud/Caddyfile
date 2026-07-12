@@ -1,0 +1,6 @@
+:80 {
+  handle_path /qingshe-assets/* {
+    reverse_proxy qingshe-assets:7000
+  }
+  respond "轻设素材服务" 200
+}

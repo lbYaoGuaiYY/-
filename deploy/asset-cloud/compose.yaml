@@ -1,0 +1,31 @@
+services:
+  qingshe-assets:
+    build:
+      context: ../..
+      dockerfile: deploy/asset-cloud/Dockerfile
+    environment:
+      QINGSHE_ADMIN_TOKEN: ${QINGSHE_ADMIN_TOKEN}
+      QINGSHE_ALLOWED_ORIGINS: ${QINGSHE_ALLOWED_ORIGINS}
+      QINGSHE_ASSET_LIBRARY: /data
+      QINGSHE_EDITOR_TOKEN: ${QINGSHE_EDITOR_TOKEN}
+    restart: unless-stopped
+    expose:
+      - "7000"
+    volumes:
+      - ./data:/data
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    depends_on:
+      - qingshe-assets
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_config:/config
+      - caddy_data:/data
+
+volumes:
+  caddy_config:
+  caddy_data:
