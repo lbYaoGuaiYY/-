@@ -1,0 +1,7 @@
+{
+  "identifier": "mobile-capability",
+  "description": "iPad uses IndexedDB and browser file/share fallbacks; no desktop filesystem capability is exposed.",
+  "windows": ["main"],
+  "platforms": ["iOS"],
+  "permissions": []
+}

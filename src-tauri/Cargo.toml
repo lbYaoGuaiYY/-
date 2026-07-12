@@ -20,3 +20,9 @@ tauri-build = { version = "2.6.3", features = [] }
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
+
+[patch.crates-io]
+# Xcode 27 beta can trap inside Wry's iOS WebKit bundle-version probe before
+# the first window is created. Keep the upstream runtime behavior on other
+# platforms while treating Apple's built-in WebKit as present on iOS/macOS.
+tauri-runtime-wry = { path = "vendor/tauri-runtime-wry" }

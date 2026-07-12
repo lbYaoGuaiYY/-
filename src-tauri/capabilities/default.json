@@ -3,6 +3,7 @@
   "identifier": "main-capability",
   "description": "Desktop project files and user-selected editable package dialogs.",
   "windows": ["main"],
+  "platforms": ["windows", "macOS", "linux"],
   "permissions": [
     "fs:allow-appdata-read-recursive",
     "fs:allow-appdata-write-recursive",

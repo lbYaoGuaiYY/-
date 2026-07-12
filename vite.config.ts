@@ -6,8 +6,20 @@ export default defineConfig(({ mode }) => {
   const entryFile = isAssetAdminBuild ? "asset-admin.html" : "index.html"
 
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: "qingshe-tauri-html-assets",
+        transformIndexHtml(html) {
+          return html.replaceAll(" crossorigin", "")
+        },
+      },
+    ],
+    // Tauri loads the packaged frontend from its custom protocol. Relative
+    // asset URLs keep desktop, iOS, and browser preview builds portable.
+    base: "./",
     build: {
+      modulePreload: false,
       outDir: isAssetAdminBuild ? "dist-asset-admin" : "dist",
       rolldownOptions: {
         input: entryFile,

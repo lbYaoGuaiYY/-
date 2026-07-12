@@ -29,6 +29,7 @@ test("keeps a cloud asset usable after the catalog becomes unavailable", async (
   await expect(asset).toBeVisible()
   await asset.click()
   await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(1)
+  await expect(page.getByRole("status", { name: "项目保存状态" })).toHaveText("已自动保存")
 
   // When
   online = false
@@ -36,8 +37,9 @@ test("keeps a cloud asset usable after the catalog becomes unavailable", async (
 
   // Then
   await expect(asset).toBeVisible()
-  await asset.click()
   await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(1)
+  await asset.click()
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
   expect(processedRequests).toBe(1)
 })
 

@@ -297,12 +297,14 @@ export class EditorController {
   async undo(): Promise<void> {
     if (this.state.isBusy || !canUndo(this.history)) return
     this.history = undoHistory(this.history)
+    this.refreshState()
     await this.restoreHistory()
   }
 
   async redo(): Promise<void> {
     if (this.state.isBusy || !canRedo(this.history)) return
     this.history = redoHistory(this.history)
+    this.refreshState()
     await this.restoreHistory()
   }
 

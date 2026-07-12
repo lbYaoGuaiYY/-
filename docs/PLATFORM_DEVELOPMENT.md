@@ -78,6 +78,10 @@ pnpm qingshe:ios:dev
 pnpm qingshe:ios:build
 ```
 
+`qingshe:ios:build` 会先运行 `scripts/prepare-ios-project.mjs`，将生成的工程固定到 iOS 15，并写入 Tao scene 生命周期配置；Vite 打包使用相对资源路径和关闭 modulepreload，避免 iPad WebKit 自定义协议下出现“HTML 已加载但脚本不执行”。当前 Mac 使用 Xcode 27 beta 时，仓库内还包含 SwiftPM target shim 与 `tauri-runtime-wry` 的 WebKit 版本探测兼容补丁，这些只针对 iOS/macOS 构建链路，不改变编辑器业务逻辑。
+
+默认的 iPadOS 验证构建面向 Apple Silicon Simulator，不签名；真机或 TestFlight 使用 Xcode Team/Provisioning 配置后，再按 Tauri CLI 的 `--target aarch64` 和 `--export-method` 选项构建。
+
 Windows：
 
 ```powershell

@@ -40,6 +40,9 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "iOS": {
+      "minimumSystemVersion": "15.0"
     }
   }
 }

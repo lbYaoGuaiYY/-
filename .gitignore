@@ -3,7 +3,9 @@ dist/
 dist-asset-admin/
 src-tauri/target/
 src-tauri/target-*/
-src-tauri/gen/
+src-tauri/gen/*
+!src-tauri/gen/apple/
+!src-tauri/gen/apple/**
 deploy/asset-cloud/.venv/
 **/__pycache__/
 *.py[cod]

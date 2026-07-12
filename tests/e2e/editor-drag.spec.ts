@@ -40,6 +40,8 @@ test("selects multiple canvas layers with the built-in marquee", async ({ page }
   await setImageInput(page)
   await page.getByTestId("asset-card-floral-arch").click()
   await page.getByTestId("asset-card-flower-column").click()
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+  const additiveSelectionModifier = await getAdditiveSelectionModifier(page)
   const canvas = page.locator("canvas.upper-canvas")
   const canvasBox = await canvas.boundingBox()
   if (canvasBox === null) throw new Error("Fabric canvas must be visible")
@@ -70,7 +72,7 @@ test("selects multiple canvas layers with the built-in marquee", async ({ page }
   await page
     .getByTestId("layer-item-flower-column")
     .locator(".layer-select")
-    .click({ modifiers: ["Control"] })
+    .click({ modifiers: [additiveSelectionModifier] })
   await page.keyboard.press("Control+D")
   await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(4)
   await expect(selectedRows).toHaveCount(2)
@@ -83,13 +85,15 @@ test("aligns multiple layers from the existing editor toolbar", async ({ page })
   await setImageInput(page)
   await page.getByTestId("asset-card-floral-arch").click()
   await page.getByTestId("asset-card-flower-column").click()
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+  const additiveSelectionModifier = await getAdditiveSelectionModifier(page)
 
   await page.getByLabel("X", { exact: true }).fill("820")
   await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
   await page
     .getByTestId("layer-item-flower-column")
     .locator(".layer-select")
-    .click({ modifiers: ["Control"] })
+    .click({ modifiers: [additiveSelectionModifier] })
 
   const alignCenter = page.getByRole("button", { name: "水平居中" })
   await expect(alignCenter).toBeEnabled()
@@ -111,11 +115,13 @@ test("flips every selected layer from the multi-selection inspector", async ({ p
   await setImageInput(page)
   await page.getByTestId("asset-card-floral-arch").click()
   await page.getByTestId("asset-card-flower-column").click()
+  await expect(page.getByTestId("layer-list").locator(".layer-row")).toHaveCount(2)
+  const additiveSelectionModifier = await getAdditiveSelectionModifier(page)
   await page.getByTestId("layer-item-floral-arch").locator(".layer-select").click()
   await page
     .getByTestId("layer-item-flower-column")
     .locator(".layer-select")
-    .click({ modifiers: ["Control"] })
+    .click({ modifiers: [additiveSelectionModifier] })
 
   // When
   await page.getByRole("button", { name: "批量水平翻转" }).click()
@@ -333,6 +339,11 @@ test("routes phone assets, layers, and properties to distinct panels", async ({ 
     true,
   )
 })
+
+async function getAdditiveSelectionModifier(page: Page): Promise<"Meta" | "Control"> {
+  const platform = await page.evaluate(() => navigator.platform)
+  return platform.startsWith("Mac") ? "Meta" : "Control"
+}
 
 async function setImageInput(page: Page, fillColor: string | null = "#e6ded1"): Promise<void> {
   await page.getByTestId("background-file-input").evaluate(async (element, fillColor) => {

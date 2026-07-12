@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawnSync } from "node:child_process"
+import { mkdirSync, rmSync, symlinkSync } from "node:fs"
+import { dirname, join, relative } from "node:path"
+
+import {
+  getIosSwiftLinkSearchPath,
+  getIosSwiftProductsPath,
+  getIosSwiftTarget,
+} from "./ios-swift-target.mjs"
+
+const args = process.argv.slice(2)
+const realSwift = process.env.QINGSHE_REAL_SWIFT ?? execFileSync("xcrun", ["--find", "swift"], {
+  encoding: "utf8",
+}).trim()
+
+let swiftArgs = args
+let iosSwiftTarget
+let swiftPackageBuildPath
+let swiftPackageConfiguration = "debug"
+if (args[0] === "build" && process.env.CARGO_CFG_TARGET_OS === "ios") {
+  const filteredArgs = ["build"]
+  for (let index = 1; index < args.length; index += 1) {
+    if (args[index] === "--arch") {
+      index += 1
+      continue
+    }
+    filteredArgs.push(args[index])
+  }
+
+  const swiftTarget = getIosSwiftTarget(
+    process.env.TARGET ?? "",
+    process.env.QINGSHE_IOS_MIN_VERSION ?? "15.0",
+  )
+  iosSwiftTarget = swiftTarget
+  swiftArgs = ["build", "--triple", swiftTarget, ...filteredArgs.slice(1)]
+
+  const buildPathIndex = filteredArgs.indexOf("--build-path")
+  if (buildPathIndex !== -1) swiftPackageBuildPath = filteredArgs[buildPathIndex + 1]
+
+  const configurationIndex = filteredArgs.findIndex(
+    (argument) => argument === "-c" || argument === "--configuration",
+  )
+  if (configurationIndex !== -1) {
+    swiftPackageConfiguration = filteredArgs[configurationIndex + 1] ?? "debug"
+  }
+}
+
+const result = spawnSync(realSwift, swiftArgs, {
+  env: process.env,
+  stdio: "inherit",
+})
+
+if (result.error) throw result.error
+
+if (result.status === 0 && iosSwiftTarget && swiftPackageBuildPath) {
+  const productsDirectory = getIosSwiftProductsPath(
+    swiftPackageBuildPath,
+    iosSwiftTarget,
+    swiftPackageConfiguration,
+  )
+  const linkDirectory = join(
+    swiftPackageBuildPath,
+    getIosSwiftLinkSearchPath(iosSwiftTarget, swiftPackageConfiguration),
+  )
+  mkdirSync(dirname(linkDirectory), { recursive: true })
+  rmSync(linkDirectory, { force: true, recursive: true })
+  symlinkSync(relative(dirname(linkDirectory), productsDirectory), linkDirectory, "dir")
+}
+
+process.exit(result.status ?? 1)
