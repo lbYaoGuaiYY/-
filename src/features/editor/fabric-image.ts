@@ -3,7 +3,7 @@ import { FabricImage, type FabricObject } from "fabric"
 import type { AssetRecord } from "./asset-registry"
 import type { ImageLayer, LayerTransform } from "./editor-model"
 import { applyFabricPerspective, readFabricPerspective } from "./fabric-perspective"
-import { findVisiblePixelBounds } from "./image-alpha-bounds"
+import { findVisiblePixelBounds, shouldInspectAlphaBounds } from "./image-alpha-bounds"
 
 export type FabricLayerState = Pick<ImageLayer, "visible" | "locked">
 
@@ -22,7 +22,8 @@ export async function loadFabricLayerImage(record: AssetRecord): Promise<LoadedF
   const sourceWidth = Math.round(image.width)
   const sourceHeight = Math.round(image.height)
   const loaded = { image, sourceWidth, sourceHeight }
-  if (sourceWidth <= 0 || sourceHeight <= 0) return loaded
+  if (sourceWidth <= 0 || sourceHeight <= 0 || !shouldInspectAlphaBounds(sourceWidth, sourceHeight))
+    return loaded
 
   const canvas = document.createElement("canvas")
   canvas.width = sourceWidth

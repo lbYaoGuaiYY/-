@@ -209,6 +209,10 @@ test("places and cancels an asset with the keyboard", async ({ page }) => {
 
   // When placing
   await page.keyboard.press("Space")
+  // dnd-kit attaches its follow-up keyboard listener on the next task so the
+  // activating Space event cannot immediately end the drag.
+  await expect(page.getByTestId("asset-drag-overlay")).toBeVisible()
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
   await page.keyboard.press("ArrowRight")
   await expect(page.getByTestId("editor-canvas")).toHaveClass(/is-drop-target/)
   await page.keyboard.press("Space")

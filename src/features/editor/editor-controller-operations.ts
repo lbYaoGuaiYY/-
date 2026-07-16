@@ -9,6 +9,7 @@ import {
   INITIAL_EDITOR_DOCUMENT,
 } from "./editor-model"
 import type { ExportImageFormat, FabricRuntime } from "./fabric-runtime"
+import { downloadImageBlob } from "./image-export"
 import { type ImageFileResult, validateImageFile } from "./image-import"
 
 export type BackgroundImportResult =
@@ -65,14 +66,7 @@ export async function downloadRuntimeImage(
 ): Promise<boolean> {
   const blob = await runtime.exportImage(format)
   if (blob === null) return false
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement("a")
-  anchor.href = url
   const extension = format === "jpeg" ? "jpg" : "png"
-  anchor.download = `轻设设计-${new Date().toISOString().slice(0, 10)}.${extension}`
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  downloadImageBlob(blob, `轻设设计-${new Date().toISOString().slice(0, 10)}.${extension}`)
   return true
 }

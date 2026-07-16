@@ -4,6 +4,10 @@ import { BUILT_IN_LIBRARY_ASSETS, type LibraryAsset } from "./asset-library"
 import type { AssetCategory } from "./demo-assets"
 import { type ManagedAssetsState, useManagedAssets } from "./use-managed-assets"
 
+export type EditorAssetLibraryOptions = {
+  readonly enabled?: boolean
+}
+
 export type EditorAssetLibrary = {
   readonly assets: readonly LibraryAsset[]
   readonly category: AssetCategory | ""
@@ -17,11 +21,12 @@ export type EditorAssetLibrary = {
   readonly status: "loading" | "ready" | "error"
 }
 
-export function useEditorAssetLibrary(): EditorAssetLibrary {
+export function useEditorAssetLibrary(options: EditorAssetLibraryOptions = {}): EditorAssetLibrary {
+  const enabled = options.enabled ?? true
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState<AssetCategory | "">("")
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN")
-  const managed = useManagedAssets({ search: query.trim(), category })
+  const managed = useManagedAssets({ search: query.trim(), category }, { enabled })
   const builtInAssets = useMemo(
     () =>
       BUILT_IN_LIBRARY_ASSETS.filter((asset) => {
@@ -33,8 +38,9 @@ export function useEditorAssetLibrary(): EditorAssetLibrary {
     [category, normalizedQuery],
   )
   const assets = useMemo(
-    () => selectEditorAssetSource(managed.status, builtInAssets, managed.assets),
-    [builtInAssets, managed.assets, managed.status],
+    () =>
+      selectEditorAssetSource(enabled ? managed.status : "error", builtInAssets, managed.assets),
+    [builtInAssets, enabled, managed.assets, managed.status],
   )
 
   return {

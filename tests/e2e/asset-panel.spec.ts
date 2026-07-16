@@ -106,6 +106,38 @@ test("refreshes newly managed assets without reloading the editor", async ({ pag
   await expect(page.getByTestId(`asset-card-${REFRESH_SERVICE_ASSET_ID}`)).toBeVisible()
 })
 
+test("automatically shows a completed processing result while the editor stays open", async ({
+  page,
+}) => {
+  await page.clock.install()
+  let revision = 1
+  let assetReady = false
+  await page.route("http://127.0.0.1:7000/catalog/revision", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ revision }),
+    })
+  })
+  await page.route("http://127.0.0.1:7000/assets?*", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      headers: { "X-Catalog-Revision": String(revision) },
+      body: JSON.stringify({
+        assets: assetReady ? [serviceAsset(REFRESH_SERVICE_ASSET_ID, "自动入库素材", "花艺")] : [],
+      }),
+    })
+  })
+  await page.goto("/")
+  await expect(page.getByTestId(`asset-card-${REFRESH_SERVICE_ASSET_ID}`)).toBeHidden()
+
+  revision = 2
+  assetReady = true
+  await page.clock.fastForward(5_100)
+
+  await expect(page.getByTestId(`asset-card-${REFRESH_SERVICE_ASSET_ID}`)).toBeVisible()
+  await expect(page.getByText("自动入库素材", { exact: true })).toBeVisible()
+})
+
 test("keeps existing managed thumbnails stable while refreshing", async ({ page }) => {
   // Given
   await page.route("http://127.0.0.1:7000/assets?*", async (route) => {
@@ -148,6 +180,29 @@ test("keeps existing managed thumbnails stable while refreshing", async ({ page 
 
   // Then
   await expect(refresh).toHaveAttribute("data-preview-source-after", sourceBeforeRefresh ?? "")
+})
+
+test("labels the built-in fallback as a cloud service outage", async ({ page }) => {
+  await useBuiltInAssetFallback(page)
+  await page.goto("/")
+
+  await expect(page.getByText("云端素材服务暂时不可用，已显示内置素材。")).toBeVisible()
+})
+
+test("shows a low-distraction cloud connection status", async ({ page }) => {
+  await page.route("http://127.0.0.1:7000/health", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ status: "ready" }),
+    })
+  })
+  await page.route("http://127.0.0.1:7000/assets?*", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ assets: [] }) })
+  })
+
+  await page.goto("/")
+
+  await expect(page.getByText("云素材在线", { exact: true })).toBeVisible()
 })
 
 test("keeps a portrait asset fully inside the centered tile preview", async ({ page }) => {

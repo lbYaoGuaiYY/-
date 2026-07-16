@@ -1,5 +1,15 @@
 # 轻设 Design System
 
+## 0. Product Boundary
+
+- 轻设 App 是唯一主产品。Web、Windows、macOS 与 iPadOS 共享同一套编辑器源码和视觉系统。
+- 云素材面板是服务器运维页，负责入库、排队与审核；不出现在轻设 App 内，也不做成桌面 App。
+- 轻抠是配套本机处理工人，只以 macOS 菜单栏 / Windows 托盘角标存在；打开即上报、领取任务并回传，不做成独立窗口软件。
+- 浏览器插件是配套收集器：识别、下载、整理并发送 AI 网页图片，不承载审核或编辑。
+- 插件、轻抠、素材面板都从属于轻设，不并列成多款产品。
+- 平台适配不能复制、改写或另起一套编辑器 UI；平台差异必须收敛在共享响应式组件和 `src/platform/` 适配层。
+- 产品界面不使用内部协作词汇（例如“用 / 存 / 造”）作为用户可见文案。
+
 ## 1. Atmosphere & Identity
 
 轻设是一台安静、专业、画布优先的本地图片合成工作台。界面保持中性，把注意力留给用户的照片和素材；视觉关键词是克制、精确、高效、低干扰。签名是“蓝色选区”：强调色只用于选中、焦点和主操作，不用于装饰。
@@ -14,22 +24,22 @@
 
 | Role | Token | Value | Usage |
 |---|---|---:|---|
-| Application | `--surface-app` | `#111318` | 应用背景 |
-| Stage | `--surface-stage` | `#15181D` | 画布外工作区 |
-| Panel | `--surface-panel` | `#1C2026` | 左右面板 |
-| Control | `--surface-control` | `#252A32` | 工具栏、输入框 |
-| Hover | `--surface-hover` | `#2D333D` | 悬停反馈 |
-| Selected | `--surface-selected` | `#303B4D` | 当前选中项 |
+| Application | `--surface-app` | `#161616` | 应用背景 |
+| Stage | `--surface-stage` | `#202020` | 画布外工作区 |
+| Panel | `--surface-panel` | `#252525` | 左右面板 |
+| Control | `--surface-control` | `#303030` | 工具栏、输入框 |
+| Hover | `--surface-hover` | `#3A3A3A` | 悬停反馈 |
+| Selected | `--surface-selected` | `#3F3F3F` | 当前选中项 |
 | Canvas | `--canvas-white` | `#FFFFFF` | 空白画布 |
-| Border | `--border-default` | `#303640` | 默认分隔线 |
-| Border strong | `--border-strong` | `#424A56` | 聚焦分隔线 |
-| Text primary | `--text-primary` | `#F0F2F5` | 主要文字 |
-| Text secondary | `--text-secondary` | `#AAB1BC` | 次要文字 |
-| Text muted | `--text-muted` | `#A0A8B3` | 元数据、禁用状态 |
-| Accent | `--accent-primary` | `#5B8DEF` | 主按钮、选区、焦点 |
-| Accent hover | `--accent-hover` | `#73A0F5` | 强调色悬停 |
-| Accent strong | `--accent-strong` | `#416FCE` | 承载白色文字的主按钮 |
-| Accent strong hover | `--accent-strong-hover` | `#365FB8` | 主按钮悬停 |
+| Border | `--border-default` | `#3C3C3C` | 默认分隔线 |
+| Border strong | `--border-strong` | `#555555` | 聚焦分隔线 |
+| Text primary | `--text-primary` | `#F2F2F2` | 主要文字 |
+| Text secondary | `--text-secondary` | `#B8B8B8` | 次要文字 |
+| Text muted | `--text-muted` | `#A8A8A8` | 元数据、禁用状态 |
+| Accent | `--accent-primary` | `#4D8DFF` | 主按钮、选区、焦点 |
+| Accent hover | `--accent-hover` | `#70A5FF` | 强调色悬停 |
+| Accent strong | `--accent-strong` | `#3B6DC7` | 承载白色文字的主按钮 |
+| Accent strong hover | `--accent-strong-hover` | `#325DAD` | 主按钮悬停 |
 | Success | `--status-success` | `#45C98A` | 成功状态 |
 | Warning | `--status-warning` | `#E7B657` | 警告状态 |
 | Error | `--status-error` | `#ED6B72` | 错误状态 |

@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - 必须使用 `pnpm`，不使用 npm 或 yarn。
-- 普通编辑器生产端点必须是 `https://xiduoduo.top/qingshe-assets/api/v1`。
+- 普通编辑器生产端点必须是 `https://assets.xiduoduo.top/api/v1`。
 - `191.223.220.201` 不得出现在新构建客户端、运行环境或用户可见文案。
 - Admin Token 不得进入普通编辑器构建。
 - 不增加账号、云项目、多人协作、微服务、Redis、Kafka 或 Kubernetes。
@@ -45,7 +45,7 @@ expect(() => createAssetServiceConfig({
 
 ```js
 expect(editorEnv).toContain(
-  "VITE_ASSET_SERVICE_URL=https://xiduoduo.top/qingshe-assets/api/v1",
+  "VITE_ASSET_SERVICE_URL=https://assets.xiduoduo.top/api/v1",
 )
 expect(editorEnv).not.toMatch(/191\.223\.220\.201/)
 ```
@@ -63,7 +63,7 @@ const PRODUCTION_ASSET_ORIGIN = "https://xiduoduo.top"
 const PRODUCTION_ASSET_PATH = "/qingshe-assets/api/v1"
 
 if (parsed.origin !== PRODUCTION_ASSET_ORIGIN || parsed.pathname !== PRODUCTION_ASSET_PATH) {
-  throw new Error("生产素材服务必须使用 https://xiduoduo.top/qingshe-assets/api/v1")
+  throw new Error("生产素材服务必须使用 https://assets.xiduoduo.top/api/v1")
 }
 ```
 
@@ -71,7 +71,7 @@ if (parsed.origin !== PRODUCTION_ASSET_ORIGIN || parsed.pathname !== PRODUCTION_
 
 ```sh
 printf '%s\n' "VITE_APP_ENV=production"
-printf '%s\n' "VITE_ASSET_SERVICE_URL=https://xiduoduo.top/qingshe-assets/api/v1"
+printf '%s\n' "VITE_ASSET_SERVICE_URL=https://assets.xiduoduo.top/api/v1"
 printf '%s\n' "VITE_ASSET_EDITOR_TOKEN=$QINGSHE_EDITOR_TOKEN"
 printf '%s\n' "VITE_ASSET_SERVICE_EVENTS=0"
 ```
@@ -380,7 +380,7 @@ Commit: `git commit --only DESIGN.md src/styles/tokens.css src/styles/components
 
 **Interfaces:**
 - Consumes: Task 1-6 的客户端、API 和主题产物。
-- Produces: `https://xiduoduo.top/qingshe-assets/api/v1/health` 可用的线上服务。
+- Produces: `https://assets.xiduoduo.top/api/v1/health` 可用的线上服务。
 
 - [ ] **Step 1: 更新部署配置**
 
@@ -423,7 +423,7 @@ docker compose logs --tail=100 qingshe-assets caddy
 
 - [ ] **Step 5: 线上验收**
 
-Run: `curl --fail --show-error https://xiduoduo.top/qingshe-assets/api/v1/health`
+Run: `curl --fail --show-error https://assets.xiduoduo.top/api/v1/health`
 
 Expected: HTTP 200 and `status` is `ready` or `degraded`, never 521.
 

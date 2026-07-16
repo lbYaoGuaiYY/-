@@ -65,13 +65,17 @@ export function createManagedLibraryAsset(record: ManagedAssetRecord, src: strin
 
 export function createServiceLibraryAsset(asset: ServiceAsset, processedBlob?: Blob): LibraryAsset {
   const processedUrl = serviceAssetMediaUrl(asset.id, "processed", asset.version)
+  const sourceUrl = processedBlob === undefined ? processedUrl : URL.createObjectURL(processedBlob)
   return {
     id: asset.id,
     assetId: createAssetId(`local:catalog:${asset.id}`),
     name: asset.name,
     category: asset.category,
-    src: processedUrl,
-    thumbnailSrc: serviceAssetMediaUrl(asset.id, "thumbnail", asset.version),
+    src: sourceUrl,
+    thumbnailSrc:
+      processedBlob === undefined
+        ? serviceAssetMediaUrl(asset.id, "thumbnail", asset.version)
+        : sourceUrl,
     width: asset.width,
     height: asset.height,
     source: {

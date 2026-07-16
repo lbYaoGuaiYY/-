@@ -5,24 +5,56 @@ services:
       dockerfile: deploy/asset-cloud/Dockerfile
     environment:
       QINGSHE_ADMIN_TOKEN: ${QINGSHE_ADMIN_TOKEN}
+      QINGSHE_ADMIN_PASSWORD_HASH: ${QINGSHE_ADMIN_PASSWORD_HASH}
+      QINGSHE_ADMIN_PASSWORD_SALT: ${QINGSHE_ADMIN_PASSWORD_SALT}
+      QINGSHE_ADMIN_SESSION_SECRET: ${QINGSHE_ADMIN_SESSION_SECRET}
+      QINGSHE_ADMIN_USERNAME: ${QINGSHE_ADMIN_USERNAME}
       QINGSHE_ALLOWED_ORIGINS: ${QINGSHE_ALLOWED_ORIGINS}
       QINGSHE_ASSET_LIBRARY: /data
       QINGSHE_EDITOR_TOKEN: ${QINGSHE_EDITOR_TOKEN}
     restart: unless-stopped
+    cpus: "0.75"
+    mem_limit: 512m
     expose:
       - "7000"
+    healthcheck:
+      test:
+        - CMD
+        - .venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7000/api/v1/health', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
     volumes:
       - ./data:/data
 
   caddy:
     image: caddy:2.10.2-alpine
     depends_on:
-      - qingshe-assets
+      qingshe-assets:
+        condition: service_healthy
     restart: unless-stopped
+    cpus: "0.20"
+    mem_limit: 128m
     ports:
       - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/xiduoduo-site:/srv/xiduoduo-site:ro
       - caddy_config:/config
       - caddy_data:/data
 

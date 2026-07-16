@@ -1,6 +1,36 @@
-:80 {
-  handle_path /qingshe-assets/* {
-    reverse_proxy qingshe-assets:7000
-  }
-  respond "轻设素材服务" 200
+xiduoduo.top {
+	encode zstd gzip
+
+	handle {
+		root * /srv/xiduoduo-site
+		file_server
+	}
+
+	@weddingAssets path /assets/*
+	header @weddingAssets Cache-Control "public, max-age=604800"
+
+	@weddingDocuments not path /assets/*
+	header @weddingDocuments Cache-Control "public, max-age=0, must-revalidate"
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+assets.xiduoduo.top {
+	encode zstd gzip
+
+	reverse_proxy qingshe-assets:7000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
 }

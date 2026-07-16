@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { findVisiblePixelBounds } from "../src/features/editor/image-alpha-bounds"
+import {
+  findVisiblePixelBounds,
+  shouldInspectAlphaBounds,
+} from "../src/features/editor/image-alpha-bounds"
 
 describe("visible pixel bounds", () => {
   it("fits the bounds to non-transparent pixels when the image has transparent padding", () => {
@@ -44,5 +47,10 @@ describe("visible pixel bounds", () => {
 
     // Then
     expect(bounds).toEqual({ x: 2, y: 1, width: 1, height: 1 })
+  })
+
+  it("skips full-resolution alpha scans that would block a touch editor", () => {
+    expect(shouldInspectAlphaBounds(2000, 2000)).toBe(true)
+    expect(shouldInspectAlphaBounds(4000, 3000)).toBe(false)
   })
 })

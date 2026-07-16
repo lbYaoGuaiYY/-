@@ -139,6 +139,22 @@ export class EditorController {
     return this.runtime.hasObjectAtPointer(event)
   }
 
+  cancelActiveTransform(): void {
+    this.runtime.cancelActiveTransform()
+  }
+
+  beginSelectionPinch(): boolean {
+    return this.runtime.beginSelectionPinch()
+  }
+
+  previewSelectionPinch(scaleRatio: number): void {
+    this.runtime.previewSelectionPinch(scaleRatio)
+  }
+
+  finishSelectionPinch(): void {
+    if (this.runtime.finishSelectionPinch()) this.commitRuntimeLayers()
+  }
+
   private updateZoomState(scale: number): void {
     const zoomPercent = Math.round(scale * 100)
     this.state = createEditorViewState(
@@ -317,6 +333,19 @@ export class EditorController {
     await this.runBusy(async () => {
       if (!(await downloadRuntimeImage(this.runtime, format))) this.setError("图片导出失败，请重试")
     })
+  }
+
+  async prepareImageExport(format: ExportImageFormat): Promise<Blob | null> {
+    if (this.history.present.backgroundAssetId === null) {
+      this.setError("请先导入底图")
+      return null
+    }
+    let exported: Blob | null = null
+    await this.runBusy(async () => {
+      exported = await this.runtime.exportImage(format)
+      if (exported === null) this.setError("图片导出失败，请重试")
+    })
+    return exported
   }
 
   async downloadPng(): Promise<void> {

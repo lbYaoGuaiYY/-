@@ -12,8 +12,14 @@ import { EDITOR_CANVAS_DROP_ID } from "./drag-placement"
 import type { EditorController } from "./editor-controller"
 import {
   distanceBetweenTouchPoints,
+  getPinchGestureTarget,
+  getPinchPanScrollPosition,
   getPinchZoomPercent,
+  getTouchGestureMode,
   getTouchPanScrollPosition,
+  midpointBetweenTouchPoints,
+  type PinchGestureTarget,
+  type TouchGestureMode,
   type TouchPanStart,
   type TouchPoint,
 } from "./editor-touch-gestures"
@@ -85,9 +91,39 @@ export function EditorCanvas({
     if (scrollElement === null) return
 
     const pointers = new Map<number, TouchPoint>()
-    let gestureMode: "pan" | "fabric" | null = null
+    let gestureMode: TouchGestureMode | null = null
     let panStart: TouchPanStart | null = null
     let pinchStart: { readonly distance: number; readonly zoomPercent: number } | null = null
+    let firstTouchStartedOnObject = false
+    let pinchTarget: PinchGestureTarget | null = null
+
+    const startPanning = (): void => {
+      scrollElement.classList.add("is-panning")
+      for (const pointerId of pointers.keys()) {
+        if (!scrollElement.hasPointerCapture(pointerId)) scrollElement.setPointerCapture(pointerId)
+      }
+    }
+
+    const beginPinch = (): void => {
+      const [first, second] = Array.from(pointers.values())
+      if (first === undefined || second === undefined) return
+      controllerRef.current?.cancelActiveTransform()
+      const selectionPinch = controllerRef.current?.beginSelectionPinch() ?? false
+      pinchTarget = getPinchGestureTarget(firstTouchStartedOnObject, selectionPinch)
+      gestureMode = "pinch"
+      const center = midpointBetweenTouchPoints(first, second)
+      panStart = {
+        left: scrollElement.scrollLeft,
+        top: scrollElement.scrollTop,
+        x: center.x,
+        y: center.y,
+      }
+      pinchStart = {
+        distance: distanceBetweenTouchPoints(first, second),
+        zoomPercent: controllerRef.current?.getSnapshot().zoomPercent ?? 100,
+      }
+      startPanning()
+    }
 
     const stopGesture = (event?: PointerEvent): void => {
       if (event !== undefined && scrollElement.hasPointerCapture(event.pointerId)) {
@@ -102,6 +138,8 @@ export function EditorCanvas({
         gestureMode = null
         panStart = null
         pinchStart = null
+        firstTouchStartedOnObject = false
+        pinchTarget = null
         scrollElement.classList.remove("is-panning")
       }
     }
@@ -109,7 +147,8 @@ export function EditorCanvas({
     const handlePointerDown = (event: PointerEvent): void => {
       if (event.pointerType !== "touch") return
       if (pointers.size === 0) {
-        gestureMode = controllerRef.current?.hasObjectAtPointer(event) ? "fabric" : "pan"
+        firstTouchStartedOnObject = controllerRef.current?.hasObjectAtPointer(event) ?? false
+        gestureMode = getTouchGestureMode(1, firstTouchStartedOnObject)
         panStart = {
           left: scrollElement.scrollLeft,
           top: scrollElement.scrollTop,
@@ -118,36 +157,47 @@ export function EditorCanvas({
         }
       }
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (pointers.size === 2) {
+        event.preventDefault()
+        event.stopPropagation()
+        beginPinch()
+        return
+      }
       if (gestureMode !== "pan") return
       event.preventDefault()
-      scrollElement.setPointerCapture(event.pointerId)
-      scrollElement.classList.add("is-panning")
-      if (pointers.size === 2) {
-        const [first, second] = Array.from(pointers.values())
-        if (first !== undefined && second !== undefined) {
-          pinchStart = {
-            distance: distanceBetweenTouchPoints(first, second),
-            zoomPercent: controllerRef.current?.getSnapshot().zoomPercent ?? 100,
-          }
-        }
-      }
+      event.stopPropagation()
+      startPanning()
     }
 
     const handlePointerMove = (event: PointerEvent): void => {
-      if (event.pointerType !== "touch" || gestureMode !== "pan") return
+      if (event.pointerType !== "touch" || gestureMode === null || gestureMode === "fabric") return
       if (!pointers.has(event.pointerId)) return
       event.preventDefault()
+      event.stopPropagation()
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
-      if (pointers.size >= 2 && pinchStart !== null) {
+      if (gestureMode === "pinch" && pointers.size >= 2 && pinchStart !== null) {
         const [first, second] = Array.from(pointers.values())
         if (first !== undefined && second !== undefined) {
-          const currentZoom = controllerRef.current?.getSnapshot().zoomPercent ?? 100
-          const nextZoom = getPinchZoomPercent(
-            pinchStart.distance,
-            distanceBetweenTouchPoints(first, second),
-            pinchStart.zoomPercent,
-          )
-          controllerRef.current?.zoomBy(nextZoom - currentZoom)
+          const currentDistance = distanceBetweenTouchPoints(first, second)
+          if (pinchTarget === "selection") {
+            controllerRef.current?.previewSelectionPinch(currentDistance / pinchStart.distance)
+          } else {
+            const currentZoom = controllerRef.current?.getSnapshot().zoomPercent ?? 100
+            const nextZoom = getPinchZoomPercent(
+              pinchStart.distance,
+              currentDistance,
+              pinchStart.zoomPercent,
+            )
+            controllerRef.current?.zoomBy(nextZoom - currentZoom)
+          }
+          if (pinchTarget === "viewport" && panStart !== null) {
+            const nextPosition = getPinchPanScrollPosition(
+              panStart,
+              midpointBetweenTouchPoints(first, second),
+            )
+            scrollElement.scrollLeft = nextPosition.left
+            scrollElement.scrollTop = nextPosition.top
+          }
         }
         return
       }
@@ -163,7 +213,25 @@ export function EditorCanvas({
 
     const handlePointerUp = (event: PointerEvent): void => {
       if (event.pointerType !== "touch") return
+      const wasPinching = gestureMode === "pinch"
+      const completedSelectionPinch = wasPinching && pinchTarget === "selection"
       stopGesture(event)
+      if (completedSelectionPinch) controllerRef.current?.finishSelectionPinch()
+      if (wasPinching) pinchTarget = null
+      if (wasPinching && pointers.size === 1) {
+        const remainingPointer = Array.from(pointers.values())[0]
+        if (remainingPointer !== undefined) {
+          gestureMode = "pan"
+          panStart = {
+            left: scrollElement.scrollLeft,
+            top: scrollElement.scrollTop,
+            x: remainingPointer.x,
+            y: remainingPointer.y,
+          }
+          pinchStart = null
+          startPanning()
+        }
+      }
     }
 
     scrollElement.addEventListener("pointerdown", handlePointerDown, { capture: true })
@@ -178,6 +246,64 @@ export function EditorCanvas({
       stopGesture()
     }
   }, [])
+
+  useEffect(() => {
+    const scrollElement = stageScrollRef.current
+    if (scrollElement === null || onOpenContextMenu === undefined) return
+
+    let longPressTimer: number | null = null
+    let activePointerId: number | null = null
+    let startX = 0
+    let startY = 0
+    const LONG_PRESS_MS = 420
+    const MOVE_TOLERANCE = 10
+
+    const clearLongPress = (): void => {
+      if (longPressTimer !== null) {
+        window.clearTimeout(longPressTimer)
+        longPressTimer = null
+      }
+      activePointerId = null
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.pointerType !== "touch") return
+      clearLongPress()
+      activePointerId = event.pointerId
+      startX = event.clientX
+      startY = event.clientY
+      const startedOnObject = controllerRef.current?.hasObjectAtPointer(event) ?? false
+      longPressTimer = window.setTimeout(() => {
+        if (activePointerId !== event.pointerId || !startedOnObject) return
+        onOpenContextMenu(startX, startY)
+        clearLongPress()
+      }, LONG_PRESS_MS)
+    }
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (activePointerId !== event.pointerId) return
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > MOVE_TOLERANCE) {
+        clearLongPress()
+      }
+    }
+
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (activePointerId !== event.pointerId) return
+      clearLongPress()
+    }
+
+    scrollElement.addEventListener("pointerdown", handlePointerDown, { capture: true })
+    scrollElement.addEventListener("pointermove", handlePointerMove, { capture: true })
+    scrollElement.addEventListener("pointerup", handlePointerUp, { capture: true })
+    scrollElement.addEventListener("pointercancel", handlePointerUp, { capture: true })
+    return () => {
+      clearLongPress()
+      scrollElement.removeEventListener("pointerdown", handlePointerDown, { capture: true })
+      scrollElement.removeEventListener("pointermove", handlePointerMove, { capture: true })
+      scrollElement.removeEventListener("pointerup", handlePointerUp, { capture: true })
+      scrollElement.removeEventListener("pointercancel", handlePointerUp, { capture: true })
+    }
+  }, [onOpenContextMenu])
 
   useEffect(() => {
     const scrollElement = stageScrollRef.current

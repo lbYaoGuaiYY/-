@@ -16,9 +16,12 @@ import { EditorDragContext } from "./features/editor/EditorDragContext"
 import { EditorToolbar } from "./features/editor/EditorToolbar"
 import type { EditorController } from "./features/editor/editor-controller"
 import type { EditorViewState } from "./features/editor/editor-view-state"
+import type { ExportImageFormat } from "./features/editor/fabric-runtime"
+import { ImageExportSheet } from "./features/editor/ImageExportSheet"
 import { InspectorPanel } from "./features/editor/InspectorPanel"
 import { LayerContextMenu } from "./features/editor/LayerContextMenu"
 import { LayerPanel } from "./features/editor/LayerPanel"
+import { MobileActionsSheet } from "./features/editor/MobileActionsSheet"
 import { MobileTabbar } from "./features/editor/MobileTabbar"
 import { OfflineAssetManager } from "./features/editor/OfflineAssetManager"
 import {
@@ -44,6 +47,7 @@ import {
 import { isDesktopRuntime } from "./features/projects/project-storage"
 import { useProjectMetadata } from "./features/projects/use-project-metadata"
 import { useProjectSession } from "./features/projects/use-project-session"
+import { QINGSHE_BUILD_INFO, qingsheBuildLabel } from "./platform/build-info"
 
 const FALLBACK_VIEW = {
   document: { canvasSize: { width: 1200, height: 800 }, backgroundAssetId: null, layers: [] },
@@ -76,6 +80,11 @@ export function App({ projectId }: AppProps) {
   const [view, setView] = useState<EditorViewState>(FALLBACK_VIEW)
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuPosition | null>(null)
   const [offlineAssetsOpen, setOfflineAssetsOpen] = useState(false)
+  const [preparedImageExport, setPreparedImageExport] = useState<{
+    readonly blob: Blob
+    readonly format: ExportImageFormat
+  } | null>(null)
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const panels = useEditorPanels()
   const backgroundInputRef = useRef<HTMLInputElement>(null)
   const projectInputRef = useRef<HTMLInputElement>(null)
@@ -83,7 +92,9 @@ export function App({ projectId }: AppProps) {
   const pendingAssetsRef = useRef<LibraryAsset[]>([])
   const projectSession = useProjectSession(controller, projectId)
   const projectMetadata = useProjectMetadata(projectId)
-  const assetLibrary = useEditorAssetLibrary()
+  const assetLibrary = useEditorAssetLibrary({
+    enabled: panels.viewport === "desktop" || panels.assetsOpen,
+  })
 
   const [inspectorHeight, setInspectorHeight] = useState(360)
   const isResizingRef = useRef(false)
@@ -321,6 +332,18 @@ export function App({ projectId }: AppProps) {
     }
   }
 
+  async function requestImageExport(format: ExportImageFormat): Promise<void> {
+    const activeController = controllerRef.current
+    if (activeController === null) return
+    if (panels.viewport === "desktop") {
+      await projectSession.flush()
+      await activeController.downloadImage(format)
+      return
+    }
+    const blob = await activeController.prepareImageExport(format)
+    if (blob !== null) setPreparedImageExport({ blob, format })
+  }
+
   function addLibraryAsset(asset: LibraryAsset): void {
     const activeController = controllerRef.current
     if (activeController === null) {
@@ -375,9 +398,7 @@ export function App({ projectId }: AppProps) {
         onRequestBackground={requestBackground}
         onUndo={() => void controller?.undo()}
         onRedo={() => void controller?.redo()}
-        onExport={(format) =>
-          void projectSession.flush().then(() => controller?.downloadImage(format))
-        }
+        onExport={(format) => void requestImageExport(format)}
         onExportProject={() => void exportEditableProject()}
         onImportProject={requestProjectImport}
       />
@@ -390,6 +411,15 @@ export function App({ projectId }: AppProps) {
         onRequestBackground={requestBackground}
       >
         <div className={workspaceClassName}>
+          {panels.viewport !== "desktop" &&
+            (panels.assetsOpen || panels.rightPanel !== "closed") && (
+              <button
+                className="panel-scrim"
+                type="button"
+                aria-label="关闭面板"
+                onClick={panels.closeAll}
+              />
+            )}
           <div className={`side-panel side-panel-left${panels.assetsOpen ? " is-open" : ""}`}>
             {offlineAssetsOpen ? (
               <OfflineAssetManager
@@ -561,6 +591,7 @@ export function App({ projectId }: AppProps) {
         <div className="status-group">
           <span>{view.document.layers.length} 个素材</span>
           <span>{view.zoomPercent}%</span>
+          <span title={`${QINGSHE_BUILD_INFO.surface} 构建版本`}>{qingsheBuildLabel()}</span>
         </div>
         <MobileTabbar
           activePanel={
@@ -570,12 +601,41 @@ export function App({ projectId }: AppProps) {
                 ? panels.rightPanel
                 : null
           }
-          onOpenAssets={panels.openAssets}
-          onOpenLayers={() => panels.openRightPanel("layers")}
-          onOpenProperties={() => panels.openRightPanel("properties")}
-          onExport={() => void projectSession.flush().then(() => controller?.downloadPng())}
+          canDelete={selectionEditable}
+          onDelete={() => controller?.deleteSelection()}
+          onOpenAssets={panels.toggleAssetsPanel}
+          onOpenLayers={() => panels.toggleRightPanel("layers")}
+          onOpenMore={() => setMobileActionsOpen(true)}
+          onOpenProperties={() => panels.toggleRightPanel("properties")}
+          onExport={() => void requestImageExport("png")}
         />
       </footer>
+      {mobileActionsOpen && panels.viewport !== "desktop" && (
+        <MobileActionsSheet
+          canExport={backgroundLoaded}
+          isBusy={view.isBusy}
+          projectName={projectMetadata.name}
+          onClose={() => setMobileActionsOpen(false)}
+          onExport={(format) => {
+            void requestImageExport(format).finally(() => setMobileActionsOpen(false))
+          }}
+          onExportProject={() => {
+            void exportEditableProject().finally(() => setMobileActionsOpen(false))
+          }}
+          onImportProject={() => {
+            requestProjectImport()
+            setMobileActionsOpen(false)
+          }}
+          onRenameProject={(name) => void projectMetadata.rename(name)}
+        />
+      )}
+      {preparedImageExport !== null && (
+        <ImageExportSheet
+          blob={preparedImageExport.blob}
+          format={preparedImageExport.format}
+          onClose={() => setPreparedImageExport(null)}
+        />
+      )}
     </main>
   )
 }

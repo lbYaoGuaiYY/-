@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "processor-capability",
+  "description": "轻抠以托盘角标运行；隐藏窗口仅用于承载生命周期，不作为界面产品。",
+  "windows": ["processor"],
+  "platforms": ["windows", "macOS", "linux"],
+  "permissions": ["core:default"]
+}

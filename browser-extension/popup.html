@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>轻设浏览器插件</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div><span class="mark">轻</span><div><strong>轻设浏览器插件</strong><small id="site-label">当前网页</small></div></div>
+        <span id="connection-state" class="connection-state">未连接</span>
+      </header>
+      <nav class="mode-tabs" aria-label="插件模式">
+        <button id="tab-auto" class="is-active" type="button" aria-pressed="true">全自动</button>
+        <button id="tab-manual" type="button" aria-pressed="false">当前页面</button>
+      </nav>
+      <p id="status" class="status" role="status">轻设配套 · 收集 AI 网页图片并送到素材面板。</p>
+
+      <section id="auto-panel" class="auto-panel" aria-labelledby="tab-auto">
+        <div class="form-grid">
+          <label>
+            <span>生成平台</span>
+            <select id="auto-provider">
+              <option value="chatgpt">ChatGPT</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </label>
+          <label>
+            <span>数量</span>
+            <input id="auto-count" type="number" min="1" max="50" value="10" inputmode="numeric" />
+          </label>
+        </div>
+        <label class="field">
+          <span>提示词</span>
+          <textarea id="auto-prompt" rows="4" maxlength="4000" placeholder="例如：婚庆素材" required></textarea>
+        </label>
+        <label class="field">
+          <span>素材分类</span>
+          <select id="auto-category">
+            <option value="">自动识别</option>
+            <option value="花艺">花艺</option>
+            <option value="家具">家具</option>
+            <option value="标识">标识</option>
+            <option value="绿植">绿植</option>
+            <option value="地面">地面</option>
+            <option value="灯具">灯具</option>
+            <option value="布艺">布艺</option>
+            <option value="其他">其他</option>
+          </select>
+        </label>
+        <section id="auto-progress" class="auto-progress" aria-live="polite">
+          <div><span>运行进度</span><strong id="auto-progress-count">尚未开始</strong></div>
+          <div class="progress-track" aria-hidden="true"><i id="auto-progress-bar"></i></div>
+          <small id="auto-progress-detail">开始后可以关闭此弹窗</small>
+        </section>
+        <div class="auto-actions">
+          <button id="auto-connect" type="button">连接素材面板</button>
+          <button id="auto-start" class="primary" type="button">开始全自动</button>
+          <button id="auto-cancel" type="button" hidden>取消运行</button>
+          <button id="auto-retry" type="button" hidden>重试失败项</button>
+        </div>
+      </section>
+
+      <section id="manual-panel" class="manual-panel" hidden aria-labelledby="tab-manual">
+        <div class="manual-heading">
+          <span>持续扫描到的图片会显示角标</span>
+          <button id="scan" type="button">重新扫描</button>
+        </div>
+        <div class="toolbar">
+          <label><input id="select-all" type="checkbox" /> 全选</label>
+          <span id="count">0 张图片</span>
+        </div>
+        <section id="image-list" class="image-list" aria-live="polite"></section>
+        <footer class="actions">
+          <button id="download" type="button" disabled>下载所选</button>
+          <button id="zip" type="button" disabled>打包 ZIP</button>
+          <button id="send" class="primary" type="button" disabled>发送到素材面板</button>
+        </footer>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -5,6 +5,9 @@
   height: 100dvh;
   overflow: hidden;
   background: var(--surface-app);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 .app-header {
@@ -127,12 +130,16 @@
     -8px 0;
   background-size: 16px 16px;
   touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
 }
 
 .stage-scroll {
   position: absolute;
   inset: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .stage-scroll.is-panning,
@@ -214,18 +221,68 @@ body.is-resizing-panel {
 }
 
 .panel-resizer-horizontal {
+  position: relative;
   min-height: 0;
   margin: 0;
   border: 0;
-  background: var(--border-default);
+  background: transparent;
   cursor: ns-resize;
   touch-action: none;
   z-index: 10;
-  transition: background 120ms ease-out;
 }
+
+.panel-resizer-horizontal::before {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border-default);
+  content: "";
+  transform: translateY(-50%);
+  transition:
+    height 120ms ease-out,
+    background 120ms ease-out;
+}
+
+.panel-resizer-horizontal::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  content: "";
+  opacity: 0.9;
+  transform: translate(-50%, -50%);
+  transition:
+    width 120ms ease-out,
+    background 120ms ease-out;
+}
+
 .panel-resizer-horizontal:hover,
 .panel-resizer-horizontal:active,
 .panel-resizer-horizontal:focus-visible {
-  background: var(--accent-primary);
   outline: 0;
+}
+
+.panel-resizer-horizontal:hover::before,
+.panel-resizer-horizontal:active::before,
+.panel-resizer-horizontal:focus-visible::before,
+body.is-resizing-panel .panel-resizer-horizontal::before {
+  height: 2px;
+  background: var(--accent-primary);
+}
+
+.panel-resizer-horizontal:hover::after,
+.panel-resizer-horizontal:active::after,
+.panel-resizer-horizontal:focus-visible::after,
+body.is-resizing-panel .panel-resizer-horizontal::after {
+  width: 36px;
+  background: var(--accent-hover);
+}
+
+.panel-scrim {
+  display: none;
 }

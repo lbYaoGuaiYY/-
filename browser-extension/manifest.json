@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "轻设浏览器插件",
+  "version": "0.2.0",
+  "description": "轻设配套：从 AI 网页收集图片，发送到云素材面板。",
+  "action": {
+    "default_title": "轻设浏览器插件",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "scripts": ["automation-state.js", "server-client.js", "service-worker.js"]
+  },
+  "permissions": ["activeTab", "alarms", "downloads", "scripting", "storage", "tabs"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "qingshe-images@xiduoduo.top",
+      "strict_min_version": "121.0"
+    }
+  },
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://aistudio.google.com/*",
+    "https://claude.ai/*",
+    "https://copilot.microsoft.com/*",
+    "https://assets.xiduoduo.top/*",
+    "https://*.oaiusercontent.com/*",
+    "https://*.openai.com/*",
+    "https://*.blob.core.windows.net/*",
+    "https://*.googleusercontent.com/*",
+    "https://*.google.com/*",
+    "https://*.bing.com/*",
+    "https://*.anthropic.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://aistudio.google.com/*",
+        "https://claude.ai/*",
+        "https://copilot.microsoft.com/*",
+        "https://assets.xiduoduo.top/admin/*"
+      ],
+      "js": ["provider-adapters.js", "content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

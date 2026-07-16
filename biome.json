@@ -13,8 +13,15 @@
       "!node_modules",
       "!dist",
       "!dist-asset-admin",
+      "!dist-processor",
+      "!dist-processing-agent",
+      "!.processing-agent-build",
+      "!.processing-node-venv",
+      "!.processing-node-py312-venv",
+      "!browser-extension/dist",
       "!src-tauri/target",
       "!src-tauri/target-*",
+      "!src-tauri/binaries",
       "!src-tauri/gen",
       "!deploy/asset-cloud/.venv",
       "!**/__pycache__",
@@ -65,6 +72,16 @@
         "rules": {
           "style": {
             "noDefaultExport": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["tests/browser-extension-automation.test.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "useLiteralKeys": "off"
           }
         }
       }

@@ -8,6 +8,7 @@ import {
   listServiceAssetPage,
   subscribeToAssetEvents,
 } from "./asset-service-client"
+import { startVisibleCatalogPolling } from "./catalog-refresh-scheduler"
 import { CloudAssetCache } from "./cloud-asset-cache"
 import type { AssetCategory } from "./demo-assets"
 import { ManagedAssetStore } from "./managed-asset-store"
@@ -26,10 +27,18 @@ export type ManagedAssetsState = {
   readonly status: "loading" | "ready" | "error"
 }
 
+export type ManagedAssetsOptions = {
+  readonly enabled?: boolean
+}
+
 const DEFAULT_QUERY = { search: "", category: "" } as const satisfies ManagedAssetQuery
 const cloudAssetCache = new CloudAssetCache()
 
-export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): ManagedAssetsState {
+export function useManagedAssets(
+  query: ManagedAssetQuery = DEFAULT_QUERY,
+  options: ManagedAssetsOptions = {},
+): ManagedAssetsState {
+  const enabled = options.enabled ?? true
   const [assets, setAssets] = useState<readonly LibraryAsset[]>([])
   const [status, setStatus] = useState<ManagedAssetsState["status"]>("loading")
   const [hasMore, setHasMore] = useState(false)
@@ -38,6 +47,14 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
   const catalogRevisionRef = useRef<string | null>(null)
   const activeQuery = useRef("")
   const activeFilter = useRef("")
+  const cachedObjectUrls = useRef(new Set<string>())
+  useEffect(
+    () => () => {
+      for (const url of cachedObjectUrls.current) URL.revokeObjectURL(url)
+      cachedObjectUrls.current.clear()
+    },
+    [],
+  )
   const refresh = useCallback(() => {
     setStatus("loading")
     setRevision((current) => current + 1)
@@ -60,6 +77,13 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
   activeQuery.current = queryKey
 
   useEffect(() => {
+    if (!enabled) {
+      setAssets([])
+      setHasMore(false)
+      setIsLoadingMore(false)
+      setStatus("error")
+      return
+    }
     const filterChanged = activeFilter.current !== filterKey
     activeFilter.current = filterKey
     let active = true
@@ -85,9 +109,7 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
         const cachedProcessed = await cloudAssetCache.readProcessed(page.assets)
         if (!active || activeQuery.current !== requestQuery) return
         setAssets(
-          page.assets.map((asset) =>
-            createServiceLibraryAsset(asset, cachedProcessed.get(asset.id)),
-          ),
+          createServiceLibraryAssets(page.assets, cachedProcessed, cachedObjectUrls.current),
         )
         catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
@@ -105,9 +127,7 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
           if (cached.assets.length > 0) {
             if (!active || activeQuery.current !== requestQuery) return
             setAssets(
-              cached.assets.map((asset) =>
-                createServiceLibraryAsset(asset, cachedProcessed.get(asset.id)),
-              ),
+              createServiceLibraryAssets(cached.assets, cachedProcessed, cachedObjectUrls.current),
             )
             setHasMore(cached.hasMore)
             setStatus("ready")
@@ -141,10 +161,10 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
         URL.revokeObjectURL(src)
       })
     }
-  }, [filterKey, query.category, query.search, queryKey])
+  }, [enabled, filterKey, query.category, query.search, queryKey])
 
   const loadMore = useCallback(() => {
-    if (!hasMore || isLoadingMore || status !== "ready") return
+    if (!enabled || !hasMore || isLoadingMore || status !== "ready") return
     const requestQuery = queryKey
     const offset = assets.length
     setIsLoadingMore(true)
@@ -163,9 +183,7 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
         if (activeQuery.current !== requestQuery) return
         setAssets((current) => [
           ...current,
-          ...page.assets.map((asset) =>
-            createServiceLibraryAsset(asset, cachedProcessed.get(asset.id)),
-          ),
+          ...createServiceLibraryAssets(page.assets, cachedProcessed, cachedObjectUrls.current),
         ])
         catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
@@ -176,10 +194,23 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
         if (activeQuery.current === requestQuery) setIsLoadingMore(false)
       }
     })()
-  }, [assets.length, hasMore, isLoadingMore, query.category, query.search, queryKey, status])
+  }, [
+    assets.length,
+    enabled,
+    hasMore,
+    isLoadingMore,
+    query.category,
+    query.search,
+    queryKey,
+    status,
+  ])
 
-  useEffect(() => subscribeToAssetEvents(refresh), [refresh])
   useEffect(() => {
+    if (!enabled) return
+    return subscribeToAssetEvents(refresh)
+  }, [enabled, refresh])
+  useEffect(() => {
+    if (!enabled) return
     const refreshWhenEditorReturns = (): void => {
       if (document.visibilityState === "visible") refreshIfCatalogChanged()
     }
@@ -189,6 +220,23 @@ export function useManagedAssets(query: ManagedAssetQuery = DEFAULT_QUERY): Mana
       window.removeEventListener("focus", refreshWhenEditorReturns)
       document.removeEventListener("visibilitychange", refreshWhenEditorReturns)
     }
-  }, [refreshIfCatalogChanged])
+  }, [enabled, refreshIfCatalogChanged])
+  useEffect(
+    () => (enabled ? startVisibleCatalogPolling(refreshIfCatalogChanged) : undefined),
+    [enabled, refreshIfCatalogChanged],
+  )
   return { assets, hasMore, isLoadingMore, loadMore, refresh, status }
+}
+
+function createServiceLibraryAssets(
+  assets: readonly Parameters<typeof createServiceLibraryAsset>[0][],
+  cachedProcessed: ReadonlyMap<string, Blob>,
+  objectUrls: Set<string>,
+): readonly LibraryAsset[] {
+  return assets.map((asset) => {
+    const cached = cachedProcessed.get(asset.id)
+    const libraryAsset = createServiceLibraryAsset(asset, cached)
+    if (cached !== undefined) objectUrls.add(libraryAsset.src)
+    return libraryAsset
+  })
 }

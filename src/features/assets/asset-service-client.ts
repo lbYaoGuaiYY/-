@@ -1,6 +1,6 @@
 import ky from "ky"
 import { z } from "zod"
-
+import { createAssetClientHeaders, getAssetClientIdentity } from "./asset-client-identity"
 import {
   ASSET_SERVICE_CONFIG,
   type AssetMediaKind,
@@ -41,6 +41,11 @@ const AssetsResponseSchema = z.object({ assets: z.array(ServiceAssetSchema) })
 const JobsResponseSchema = z.object({ jobs: z.array(ServiceJobSchema) })
 const CatalogRevisionResponseSchema = z.object({ revision: z.number().int().nonnegative() })
 const AssetEventPayloadSchema = z.object({ assetId: z.string().uuid() })
+const ASSET_READ_RETRY = {
+  limit: 2,
+  methods: ["get"],
+  statusCodes: [408, 425, 429, 500, 502, 503, 504],
+}
 
 export type ServiceAsset = z.infer<typeof ServiceAssetSchema>
 export type ServiceJob = z.infer<typeof ServiceJobSchema>
@@ -91,9 +96,12 @@ export type ServiceAssetPage = {
 
 const client = ky.create({
   prefix: `${ASSET_SERVICE_CONFIG.baseUrl}/`,
-  headers: createAssetServiceHeaders(ASSET_SERVICE_CONFIG),
+  headers: {
+    ...createAssetServiceHeaders(ASSET_SERVICE_CONFIG),
+    ...createAssetClientHeaders(getAssetClientIdentity()),
+  },
   timeout: 30_000,
-  retry: 0,
+  retry: ASSET_READ_RETRY,
 })
 const pendingAssetPages = new Map<string, Promise<ServiceAssetPage>>()
 const cachedAssetPages = new Map<

@@ -4,7 +4,7 @@
 
 将当前已能运行的轻设编辑器、素材入库工具和云素材 API 整理为一套可交付产品：
 
-- Windows、macOS、iPad 和网页端只通过 `https://xiduoduo.top/qingshe-assets/api/v1` 传输素材。
+- Windows、macOS、iPad 和网页端只通过 `https://assets.xiduoduo.top/api/v1` 传输素材。
 - `191.223.220.201` 只是源站层的备用信息，不写入编辑器源码、环境文件、安装包、运行日志或用户可见文案。
 - 普通编辑器保持画布优先，只显示与当前设备相关的素材连接、下载和缓存状态。
 - 独立素材管理端承载入库、审核、云同步、容量、客户端、传输、告警和安全控制。
@@ -167,7 +167,7 @@
 ### 线上验收
 
 - 从 Windows 管理通道 SSH 进入源站，部署并启动 Docker Compose。
-- `https://xiduoduo.top/qingshe-assets/api/v1/health` 返回 200，证书有效。
+- `https://assets.xiduoduo.top/api/v1/health` 返回 200，证书有效。
 - 管理端可见真实主机、库、客户端和传输数据。
 - 普通 Editor Token 访问管理遥测和控制接口均被拒绝。
 - 新构建的 Web、Windows、macOS 和 iPad 配置只包含 `xiduoduo.top`。

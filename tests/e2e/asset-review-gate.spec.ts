@@ -30,45 +30,56 @@ test("editor requests only approved catalog assets", async ({ page }) => {
   expect(reviewFilters).toContain("0")
 })
 
-test("admin filters review assets and confirms their current category", async ({ page }) => {
-  // Given
+test("server panel confirms reviewed assets in their current category", async ({ page }) => {
   let reviewResolved = false
   const patches: unknown[] = []
-  await page.route("http://127.0.0.1:7000/jobs", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ jobs: [] }) })
-  })
-  await page.route("http://127.0.0.1:7000/assets?*", async (route) => {
-    const url = new URL(route.request().url())
-    const reviewFilter = url.searchParams.get("needs_review")
-    const assets =
-      reviewFilter === "1" && !reviewResolved
-        ? [serviceAsset(REVIEW_ASSET_ID, "待检查素材", "其他", true)]
-        : []
+  await page.route("**/admin/processing-dashboard", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ assets }),
+      body: JSON.stringify({
+        nodes: [],
+        tasks: reviewResolved ? [] : [reviewTask()],
+        extension_devices: [],
+        automation_runs: [],
+      }),
     })
   })
-  await page.route(`http://127.0.0.1:7000/assets/${REVIEW_ASSET_ID}`, async (route) => {
+  await page.route("**/admin/observability/summary", async (route) => {
+    await route.fulfill({ status: 503, body: "not needed for this flow" })
+  })
+  await page.route(`**/admin/assets/${REVIEW_ASSET_ID}`, async (route) => {
     patches.push(await route.request().postDataJSON())
     reviewResolved = true
-    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ updated: true }),
+    })
   })
   await page.goto("/asset-admin.html")
 
-  // When
-  await page.getByRole("button", { name: "待检查（1）", exact: true }).click()
-  await page
-    .getByRole("button", { name: "待检查素材 QS-000777 · 其他 · 待检查", exact: true })
-    .click()
-
-  // Then
-  await expect(page.getByLabel("批量分类")).toHaveValue("其他")
+  await expect(page.getByRole("heading", { name: "待检查" })).toBeVisible()
+  await expect(page.getByLabel("待检查素材 分类")).toHaveValue("其他")
   await page.getByRole("button", { name: "确认入库", exact: true }).click()
+
   expect(patches).toEqual([{ category: "其他", needs_review: false }])
-  await expect(page.getByText("暂时没有符合条件的素材", { exact: true })).toBeVisible()
-  await expect(page.getByRole("button", { name: "待检查（0）", exact: true })).toBeVisible()
+  await expect(page.getByText("暂无待检查素材", { exact: true })).toBeVisible()
 })
+
+function reviewTask() {
+  return {
+    id: "00000000-0000-4000-8000-000000000776",
+    name: "待检查素材",
+    category: "其他",
+    needs_review: true,
+    status: "ready",
+    node_id: null,
+    asset_id: REVIEW_ASSET_ID,
+    error: null,
+    created_at: "2026-07-11T00:00:00+00:00",
+    updated_at: "2026-07-11T00:00:00+00:00",
+  }
+}
 
 function serviceAsset(id: string, name: string, category: string, needsReview: boolean) {
   return {

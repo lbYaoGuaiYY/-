@@ -1,8 +1,8 @@
 import { open, save } from "@tauri-apps/plugin-dialog"
 import { readFile, writeFile } from "@tauri-apps/plugin-fs"
 
+import { isDesktopRuntime } from "../../platform/runtime"
 import { projectPackageFilename } from "./project-package"
-import { isDesktopRuntime } from "./tauri-runtime"
 
 const PROJECT_PACKAGE_FILTER = [{ name: "轻设可编辑项目", extensions: ["qingshe"] }]
 export const IMAGE_FILE_FILTER = {

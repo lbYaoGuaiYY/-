@@ -9,6 +9,9 @@ COPY deploy/asset-cloud/pyproject.toml deploy/asset-cloud/uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY tools ./tools
+COPY dist-asset-admin ./admin
+RUN mkdir -p /app/admin/downloads
+COPY browser-extension/qingshe-image-archive-0.1.0.zip ./admin/downloads/qingshe-image-archive-0.1.0.zip
 
 EXPOSE 7000
 

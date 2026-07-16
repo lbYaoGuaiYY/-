@@ -49,7 +49,13 @@ function AssetTileContent({
   return (
     <>
       <span className="asset-tile__preview">
-        <img src={asset.thumbnailSrc ?? asset.src} alt="" draggable={false} />
+        <img
+          src={asset.thumbnailSrc ?? asset.src}
+          alt=""
+          draggable={false}
+          loading="lazy"
+          decoding="async"
+        />
       </span>
       <span className="asset-tile__details">
         <span className="asset-tile__name">{asset.name}</span>

@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:4174",
-    "beforeDevCommand": "pnpm dev:tauri",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "pnpm app:dev:tauri",
+    "beforeBuildCommand": "pnpm app:build"
   },
   "app": {
     "windows": [

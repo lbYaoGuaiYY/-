@@ -1,8 +1,1733 @@
 .asset-admin-shell {
-  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-4);
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-4);
   background: var(--surface-app);
   color: var(--text-primary);
+}
+
+.asset-admin-login-shell {
+  display: grid;
+  min-height: 100dvh;
+  padding: var(--space-4);
+  place-items: center;
+  background: var(--surface-app);
+}
+
+.asset-admin-login {
+  display: grid;
+  width: min(100%, 360px);
+  gap: var(--space-3);
+  padding: 32px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.asset-admin-login__brand {
+  color: var(--accent-hover);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.asset-admin-login h1,
+.asset-admin-login p {
+  margin: 0;
+}
+
+.asset-admin-login h1 {
+  font-size: 22px;
+  line-height: 30px;
+}
+
+.asset-admin-login > p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.asset-admin-login label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.asset-admin-login input,
+.asset-admin-login button {
+  min-height: 40px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.asset-admin-login input {
+  padding: 0 var(--space-2);
+}
+
+.asset-admin-login button {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.asset-admin-login__message {
+  min-height: 20px;
+  color: var(--status-warning);
+  font-size: 12px;
+}
+
+.cloud-material-console {
+  display: grid;
+  width: 100%;
+  max-width: 920px;
+  min-width: 0;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+  align-content: start;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface-app);
+}
+
+.cloud-material-console > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cloud-material-console__header,
+.cloud-material-console__header > div,
+.cloud-material-console__node,
+.cloud-material-console__node > div,
+.cloud-material-console__list header,
+.cloud-material-console__review header,
+.cloud-material-console__row,
+.cloud-material-console__download {
+  display: flex;
+  align-items: center;
+}
+
+.cloud-material-console__header {
+  min-height: 48px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.cloud-material-console__header > div {
+  gap: 8px;
+}
+
+.cloud-material-console__brand {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cloud-material-console__header h1 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.cloud-material-console__header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cloud-material-console__tagline {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+}
+
+.cloud-material-console__workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cloud-material-console__flow {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cloud-material-console__actions {
+  display: grid;
+  gap: 10px;
+}
+
+.cloud-material-console__companions {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cloud-material-console__companion {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.cloud-material-console__companion > div,
+.cloud-material-console__companion header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cloud-material-console__companion > div {
+  justify-content: flex-start;
+}
+
+.cloud-material-console__companion h2 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cloud-material-console__companion small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cloud-material-console__companion > em {
+  justify-self: start;
+  color: var(--status-success);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.cloud-material-console__companion > em.is-offline,
+.cloud-material-console__companion header > em.is-offline {
+  color: var(--status-warning);
+}
+
+.cloud-material-console__companion .cloud-material-console__download {
+  justify-content: flex-start;
+  min-height: 36px;
+}
+
+.cloud-material-console__processor-title,
+.cloud-material-console__local-processor,
+.cloud-material-console__processor-list li,
+.cloud-material-console__local-processor button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.cloud-material-console__processor-title {
+  gap: 10px;
+}
+
+.cloud-material-console__processor-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.cloud-material-console__processor-status {
+  color: var(--status-success);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.cloud-material-console__processor-status.is-offline {
+  color: var(--status-warning);
+}
+
+.cloud-material-console__local-processor {
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-control);
+  cursor: default;
+}
+
+.cloud-material-console__local-processor .cloud-material-console__processor-copy {
+  flex: 1;
+}
+
+.cloud-material-console__local-processor strong,
+.cloud-material-console__processor-list strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-material-console__local-processor button {
+  min-height: 36px;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-control);
+  background: var(--accent-strong);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cloud-material-console__processor-missing {
+  margin: 0;
+  color: var(--status-warning);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.cloud-material-console__processor-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+  border-top: 1px solid var(--border-default);
+}
+
+.cloud-material-console__processor-list h3 {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.cloud-material-console__processor-list ul {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  background: var(--border-default);
+  list-style: none;
+}
+
+.cloud-material-console__processor-list li {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-control);
+}
+
+.cloud-material-console__processor-list .cloud-material-console__processor-copy {
+  flex: 1;
+}
+
+.cloud-material-console__overview > div.is-online strong {
+  color: var(--status-success);
+}
+
+.cloud-material-console__overview > div.is-offline strong {
+  color: var(--status-warning);
+}
+
+.cloud-material-console__ingest,
+.cloud-material-console__list,
+.cloud-material-console__review,
+.cloud-material-console__node,
+.cloud-material-console__extension-automation,
+.cloud-material-console__companion,
+.cloud-material-console__overview > div {
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.cloud-material-console__ingest {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+.cloud-material-console__eyebrow {
+  color: var(--accent-hover);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.cloud-material-console__ingest h2,
+.cloud-material-console__list h2,
+.cloud-material-console__review h2,
+.cloud-material-console__node h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.cloud-material-console__ingest > p {
+  margin: -4px 0 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cloud-material-console__extension-stage {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--accent-primary);
+  background: var(--surface-control);
+}
+
+.cloud-material-console__processor-pairing {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--accent-primary);
+  background: var(--surface-control);
+}
+
+.cloud-material-console__processor-pairing h3,
+.cloud-material-console__processor-pairing p {
+  margin: 0;
+}
+
+.cloud-material-console__processor-pairing h3 {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cloud-material-console__processor-pairing p {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.cloud-material-console__extension-stage header,
+.cloud-material-console__extension-stage li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.cloud-material-console__extension-stage header {
+  justify-content: space-between;
+}
+
+.cloud-material-console__extension-stage h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cloud-material-console__extension-stage header button,
+.cloud-material-console__extension-stage li button {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+}
+
+.cloud-material-console__extension-stage ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  list-style: none;
+}
+
+.cloud-material-console__extension-stage li {
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.cloud-material-console__extension-preview {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--border-default);
+  object-fit: cover;
+}
+
+.cloud-material-console__extension-name {
+  overflow: hidden;
+  flex: 1;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-material-console__category {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.cloud-material-console__category select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.cloud-material-console__category small {
+  grid-column: 2;
+  margin-top: -4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cloud-material-console__primary-action,
+.cloud-material-console__secondary-action {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: var(--radius-control);
+  font-weight: 650;
+}
+
+.cloud-material-console__primary-action {
+  border: 1px solid var(--accent-primary);
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.cloud-material-console__processor-pairing > .cloud-material-console__primary-action {
+  width: auto;
+  min-width: 190px;
+  min-height: 44px;
+}
+
+.cloud-material-console__extension-stage > .cloud-material-console__primary-action {
+  min-height: 44px;
+}
+
+.cloud-material-console__secondary-action {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.cloud-material-console__download {
+  min-height: 44px;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.cloud-material-console__message {
+  min-height: 20px;
+  margin: 0;
+  color: var(--status-warning);
+  font-size: 12px;
+}
+
+.cloud-material-console__overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-material-console__overview > div {
+  display: grid;
+  min-height: 76px;
+  padding: 12px;
+  align-content: center;
+  gap: 4px;
+}
+
+.cloud-material-console__overview strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 23px;
+  line-height: 28px;
+}
+
+.cloud-material-console__overview span,
+.cloud-material-console__list header span,
+.cloud-material-console__node small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cloud-material-console__list {
+  padding: 0 16px;
+}
+
+.cloud-material-console__review {
+  padding: 0 16px;
+}
+
+.cloud-material-console__review header {
+  min-height: 64px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.cloud-material-console__review header > div,
+.cloud-material-console__review-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.cloud-material-console__review header span,
+.cloud-material-console__review-row small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cloud-material-console__review header > strong {
+  color: var(--accent-hover);
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-material-console__review-row {
+  display: grid;
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.cloud-material-console__review-row select,
+.cloud-material-console__review-row .cloud-material-console__secondary-action {
+  min-height: 40px;
+}
+
+.cloud-material-console__review-row select {
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+}
+
+.cloud-material-console__review-row .cloud-material-console__secondary-action {
+  width: auto;
+  padding: 0 14px;
+}
+
+.cloud-material-console__list header {
+  min-height: 64px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.cloud-material-console__list header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.cloud-material-console__list header > strong {
+  display: grid;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  color: var(--accent-hover);
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-material-console__empty {
+  margin: 0;
+  padding: 20px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.cloud-material-console__row {
+  min-height: 60px;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.cloud-material-console__row > span {
+  display: grid;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.cloud-material-console__row small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.cloud-material-console__row em,
+.cloud-material-console__node > em {
+  margin-left: auto;
+  color: var(--status-success);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.cloud-material-console__node > em.is-offline {
+  color: var(--status-warning);
+}
+
+.cloud-material-console__recent {
+  padding: 14px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.cloud-material-console__recent summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.cloud-material-console__recent div {
+  padding-top: 10px;
+  color: var(--text-muted);
+}
+
+.cloud-material-console__node {
+  min-height: 72px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.cloud-material-console__extension-automation {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.cloud-material-console__extension-automation header,
+.cloud-material-console__automation-run {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cloud-material-console__extension-automation header > div,
+.cloud-material-console__automation-run > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.cloud-material-console__extension-automation h2,
+.cloud-material-console__extension-automation p {
+  margin: 0;
+}
+
+.cloud-material-console__extension-automation h2 {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cloud-material-console__extension-automation small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cloud-material-console__extension-automation header > em,
+.cloud-material-console__automation-run > em {
+  color: var(--status-success);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.cloud-material-console__extension-automation .is-offline,
+.cloud-material-console__automation-run > em {
+  color: var(--status-warning);
+}
+
+.cloud-material-console__automation-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-default);
+}
+
+.cloud-material-console__automation-run strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-material-console__automation-run > b {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-material-console__automation-run progress {
+  width: 100%;
+  height: 4px;
+  grid-column: 1 / -1;
+  border: 0;
+  background: var(--surface-control);
+  accent-color: var(--accent-primary);
+}
+
+.cloud-material-console__node > div {
+  gap: 10px;
+}
+.cloud-material-console__node span {
+  display: grid;
+  gap: 1px;
+}
+.cloud-material-console__node h2 {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.asset-admin-cloud.is-compact {
+  grid-column: auto;
+}
+.asset-admin-cloud.is-compact details {
+  background: var(--surface-panel);
+}
+.asset-admin-cloud.is-compact summary {
+  cursor: pointer;
+  list-style: none;
+}
+.asset-admin-cloud.is-compact summary::-webkit-details-marker {
+  display: none;
+}
+.asset-admin-cloud.is-compact summary::after {
+  content: "展开";
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.asset-admin-cloud.is-compact details[open] summary::after {
+  content: "收起";
+}
+
+@media (min-width: 700px) {
+  .cloud-material-console {
+    padding: 28px 24px 48px;
+  }
+  .cloud-material-console__ingest {
+    grid-template-columns: 1fr;
+  }
+  .cloud-material-console__actions {
+    grid-template-columns: 1fr 1fr;
+  }
+  .cloud-material-console__companions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 980px) {
+  .cloud-material-console {
+    max-width: 1080px;
+  }
+  .cloud-material-console__workspace {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: start;
+  }
+  .cloud-material-console__flow {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+/* Material panel — calm hierarchy, compact controls, and one continuous workspace. */
+.material-panel {
+  display: grid;
+  width: 100%;
+  max-width: 1180px;
+  min-width: 0;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+  align-content: start;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  -webkit-overflow-scrolling: touch;
+}
+
+.material-panel > *,
+.material-panel__primary-grid > *,
+.material-panel__workflow > *,
+.material-panel__tools-grid > * {
+  min-width: 0;
+}
+
+.material-panel button,
+.material-panel select,
+.material-panel a {
+  font: inherit;
+}
+
+.material-panel button,
+.material-panel select {
+  color: var(--text-primary);
+}
+
+.material-panel button:focus-visible,
+.material-panel select:focus-visible,
+.material-panel a:focus-visible,
+.material-panel summary:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.material-panel__topbar,
+.material-panel__identity,
+.material-panel__topbar-actions,
+.material-panel__connection,
+.material-panel__section-header,
+.material-panel__section-header > div,
+.material-panel__button,
+.material-panel__text-link,
+.material-panel__processor-control,
+.material-panel__staged header,
+.material-panel__staged li,
+.material-panel__tool > header,
+.material-panel__tool > header > div,
+.material-panel__processors li {
+  display: flex;
+  align-items: center;
+}
+
+.material-panel__topbar {
+  min-height: 48px;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.material-panel__identity {
+  min-width: 0;
+  gap: 10px;
+}
+
+.material-panel__identity strong {
+  font-size: 17px;
+  letter-spacing: 0.02em;
+}
+
+.material-panel__identity > span {
+  width: 1px;
+  height: 16px;
+  background: var(--border-strong);
+}
+
+.material-panel__identity h1 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.material-panel__topbar-actions {
+  gap: 12px;
+}
+
+.material-panel__connection {
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.material-panel__connection i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-success);
+}
+
+.material-panel__icon-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+}
+
+.material-panel__icon-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-control);
+}
+
+.material-panel__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 76px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+}
+
+.material-panel__summary article {
+  display: grid;
+  min-width: 0;
+  padding: 13px 16px;
+  align-content: center;
+  gap: 4px;
+}
+
+.material-panel__summary article + article {
+  border-left: 1px solid var(--border-default);
+}
+
+.material-panel__summary span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__summary strong {
+  overflow: hidden;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__summary .needs-attention strong,
+.material-panel__summary .is-offline strong {
+  color: var(--status-warning);
+}
+
+.material-panel__summary .is-online strong {
+  color: var(--status-success);
+}
+
+.material-panel__summary .is-online strong,
+.material-panel__summary .is-offline strong {
+  font-size: 15px;
+  line-height: 28px;
+}
+
+.material-panel__primary-grid,
+.material-panel__workflow,
+.material-panel__tools-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.material-panel__primary-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+  align-items: stretch;
+}
+
+.material-panel__workflow,
+.material-panel__tools-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.material-panel__section {
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+}
+
+.material-panel__section-header {
+  min-height: 64px;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.material-panel__section-header.is-compact {
+  min-height: 52px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.material-panel__section-header > div {
+  min-width: 0;
+  gap: 10px;
+}
+
+.material-panel__section-header > div > span {
+  color: var(--accent-hover);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.material-panel__section-header h2,
+.material-panel__section-header p,
+.material-panel__section-header > strong {
+  margin: 0;
+}
+
+.material-panel__section-header h2 {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__section-header p {
+  max-width: 360px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
+}
+
+.material-panel__section-header > strong {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.material-panel__section-body,
+.material-panel__list-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.material-panel__category {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.material-panel__category select,
+.material-panel__review-row select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 32px 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+}
+
+.material-panel__category small {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.material-panel__upload-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.material-panel__button {
+  min-height: 40px;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.material-panel__button:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  background: var(--surface-hover);
+}
+
+.material-panel__button.is-primary {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.material-panel__button.is-primary:hover:not(:disabled) {
+  border-color: var(--accent-strong-hover);
+  background: var(--accent-strong-hover);
+}
+
+.material-panel__notice,
+.material-panel__processor-note,
+.material-panel__warning,
+.material-panel__empty,
+.material-panel__device-name {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.material-panel__notice {
+  min-height: 19px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.material-panel__callout,
+.material-panel__staged {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+}
+
+.material-panel__callout {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.material-panel__callout h3,
+.material-panel__staged h3,
+.material-panel__callout p {
+  margin: 0;
+}
+
+.material-panel__callout h3,
+.material-panel__staged h3 {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.material-panel__callout p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.material-panel__staged header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.material-panel__staged header > button,
+.material-panel__staged li > button {
+  display: grid;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.material-panel__staged header > button {
+  min-width: 36px;
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.material-panel__staged ul,
+.material-panel__processors ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.material-panel__staged ul {
+  display: grid;
+  max-height: 190px;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.material-panel__staged li {
+  min-width: 0;
+  gap: 9px;
+  padding: 5px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.material-panel__staged img {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: var(--canvas-white);
+}
+
+.material-panel__staged li > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__staged li > button {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+
+.material-panel__processor-control {
+  width: 100%;
+  min-height: 74px;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.material-panel__processor-control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.material-panel__processor-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+}
+
+.material-panel__processor-control > div:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.material-panel__processor-control strong,
+.material-panel__processor-control span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__processor-control strong {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.material-panel__processor-control span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.material-panel__local-processor .material-panel__button {
+  width: 100%;
+}
+
+.material-panel__text-link {
+  width: fit-content;
+  min-height: 30px;
+  gap: 6px;
+  color: var(--accent-hover);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.material-panel__text-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.material-panel__processor-note {
+  color: var(--text-muted);
+}
+
+.material-panel__warning {
+  padding: 9px 10px;
+  border: 1px solid var(--status-warning);
+  color: var(--status-warning);
+}
+
+.material-panel__list-body {
+  min-height: 82px;
+  padding-top: 0;
+  padding-bottom: 0;
+  gap: 0;
+}
+
+.material-panel__empty {
+  display: grid;
+  min-height: 80px;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.material-panel__review-row,
+.material-panel__task-row {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.material-panel__review-row:last-child,
+.material-panel__task-row:last-child {
+  border-bottom: 0;
+}
+
+.material-panel__review-row {
+  grid-template-columns: minmax(0, 1fr) minmax(116px, 0.65fr) auto;
+}
+
+.material-panel__task-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.material-panel__review-row > span,
+.material-panel__task-row > span,
+.material-panel__automation-run > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.material-panel__review-row strong,
+.material-panel__task-row strong,
+.material-panel__automation-run strong,
+.material-panel__review-row small,
+.material-panel__task-row small,
+.material-panel__automation-run small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__review-row strong,
+.material-panel__task-row strong,
+.material-panel__automation-run strong {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.material-panel__review-row small,
+.material-panel__task-row small,
+.material-panel__automation-run small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.material-panel__review-row select {
+  min-height: 34px;
+  font-size: 12px;
+}
+
+.material-panel__review-row .material-panel__button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.material-panel__task-row em,
+.material-panel__processors em,
+.material-panel__tool > header > em {
+  color: var(--status-warning);
+  font-size: 12px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.material-panel__recent {
+  padding: 11px 0;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.material-panel__recent summary {
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.material-panel__recent div {
+  padding: 6px 0 0 14px;
+  color: var(--text-muted);
+}
+
+.material-panel__tools-grid {
+  padding: 16px;
+}
+
+.material-panel__tool {
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+}
+
+.material-panel__tool > header {
+  min-height: 44px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.material-panel__tool > header > div {
+  min-width: 0;
+  gap: 8px;
+}
+
+.material-panel__tool h3 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.material-panel__tool > header > span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.material-panel__processors li {
+  min-height: 52px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.material-panel__processors li + li {
+  border-top: 1px solid var(--border-default);
+}
+
+.material-panel__processors li > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.material-panel__processors strong,
+.material-panel__processors small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-panel__processors strong {
+  font-size: 13px;
+}
+
+.material-panel__processors small,
+.material-panel__device-name {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.material-panel__processors em.is-online,
+.material-panel__tool > header > em.is-online {
+  color: var(--status-success);
+}
+
+.material-panel__device-name {
+  padding: 10px 12px 0;
+}
+
+.material-panel__automation-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 12px;
+}
+
+.material-panel__automation-run > b {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.material-panel__automation-run progress {
+  width: 100%;
+  height: 4px;
+  grid-column: 1 / -1;
+  border: 0;
+  background: var(--surface-panel);
+  accent-color: var(--accent-primary);
+}
+
+.material-panel__automation-run > em {
+  grid-column: 1 / -1;
+  color: var(--status-warning);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.material-panel__diagnostics .asset-admin-cloud.is-compact {
+  border-radius: var(--radius-control);
+}
+
+.material-panel__diagnostics .asset-admin-cloud.is-compact details {
+  border-radius: inherit;
+}
+
+@media (max-width: 979px) {
+  .material-panel__primary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 799px) {
+  .material-panel__workflow,
+  .material-panel__tools-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 699px) {
+  .material-panel {
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px
+      calc(28px + env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+  }
+
+  .material-panel__topbar {
+    min-height: 52px;
+  }
+
+  .material-panel__connection {
+    display: none;
+  }
+
+  .material-panel__icon-button,
+  .material-panel__button,
+  .material-panel__category select,
+  .material-panel__review-row select,
+  .material-panel__staged header > button,
+  .material-panel__staged li > button,
+  .material-panel__text-link {
+    min-height: 44px;
+  }
+
+  .material-panel__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .material-panel__summary article {
+    min-height: 70px;
+    padding: 11px 13px;
+  }
+
+  .material-panel__summary article:nth-child(3) {
+    border-left: 0;
+  }
+
+  .material-panel__summary article:nth-child(n + 3) {
+    border-top: 1px solid var(--border-default);
+  }
+
+  .material-panel__section-header {
+    min-height: 62px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 13px;
+  }
+
+  .material-panel__section-header.is-compact {
+    min-height: 52px;
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .material-panel__section-header p {
+    padding-left: 28px;
+    text-align: left;
+  }
+
+  .material-panel__section-body,
+  .material-panel__tools-grid {
+    padding: 13px;
+  }
+
+  .material-panel__category,
+  .material-panel__callout {
+    grid-template-columns: 1fr;
+  }
+
+  .material-panel__category {
+    gap: 6px;
+  }
+
+  .material-panel__category small {
+    grid-column: auto;
+  }
+
+  .material-panel__callout .material-panel__button {
+    width: 100%;
+  }
+
+  .material-panel__upload-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .material-panel__text-link {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .material-panel__review-row {
+    grid-template-columns: 1fr;
+  }
+
+  .material-panel__review-row .material-panel__button {
+    width: 100%;
+    min-height: 44px;
+  }
 }
 
 .asset-admin-header,
@@ -14,11 +1739,115 @@
   gap: var(--space-3);
 }
 
+.asset-admin-header,
+.asset-admin-section-header {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
 .asset-admin-header {
+  grid-column: 1 / -1;
   min-height: 48px;
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-default);
+}
+
+.asset-admin-cloud {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.asset-admin-cloud__header,
+.asset-admin-cloud__header > div,
+.asset-admin-cloud__controls,
+.asset-admin-cloud__alerts li {
+  display: flex;
+  align-items: center;
+}
+
+.asset-admin-cloud__header {
+  min-height: 40px;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.asset-admin-cloud__header > div,
+.asset-admin-cloud__controls,
+.asset-admin-cloud__alerts li {
+  gap: var(--space-2);
+}
+
+.asset-admin-cloud__header h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.asset-admin-cloud__header span,
+.asset-admin-cloud__metrics dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.asset-admin-cloud__body {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.asset-admin-cloud__metrics {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(72px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--border-default);
+}
+
+.asset-admin-cloud__metrics > div {
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--surface-control);
+}
+
+.asset-admin-cloud__metrics dd {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-admin-cloud__controls {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  justify-content: flex-end;
+}
+
+.asset-admin-cloud__controls > span {
+  margin-right: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.asset-admin-cloud__alerts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  color: var(--status-warning);
+  font-size: 12px;
+  list-style: none;
+}
+
+.asset-admin-cloud__error {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--status-error);
+  font-size: 12px;
 }
 
 .asset-admin-header > div {
@@ -99,6 +1928,34 @@
   border-radius: var(--radius-control);
   background: var(--surface-control);
   color: var(--text-primary);
+}
+
+.asset-admin-secondary-button,
+.asset-admin-download-link {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.asset-admin-download-link {
+  border-color: var(--accent-strong);
+  color: var(--accent-hover);
+}
+
+.asset-admin-hint {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .asset-admin-field {
@@ -246,17 +2103,16 @@
 }
 
 .asset-admin-ingestion {
-  position: fixed;
-  top: 84px;
-  left: var(--space-4);
-  width: 320px;
-  max-height: calc(100dvh - 104px);
+  position: sticky;
+  top: var(--space-4);
+  width: auto;
+  max-height: calc(100dvh - 32px);
   overflow: auto;
 }
 
 .asset-admin-catalog {
-  min-height: calc(100dvh - 104px);
-  margin-left: 336px;
+  min-height: 480px;
+  margin-left: 0;
 }
 
 .asset-admin-section-header > div,
@@ -272,6 +2128,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.asset-admin-filters,
+.asset-admin-batch-bar {
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .asset-admin-section-header > .asset-admin-filters {
@@ -296,6 +2158,7 @@
 .asset-admin-filters input,
 .asset-admin-filters select,
 .asset-admin-batch-bar select {
+  min-width: 0;
   min-height: 32px;
   padding: 0 var(--space-2);
   border: 1px solid var(--border-default);
@@ -349,7 +2212,6 @@
 
 .asset-admin-catalog-grid li.is-selected {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px var(--accent-primary);
 }
 
 .asset-admin-catalog-grid button {
@@ -421,6 +2283,18 @@
 }
 
 @media (max-width: 899px) {
+  .asset-admin-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-admin-header,
+  .asset-admin-cloud {
+    grid-column: 1;
+  }
+
+  .asset-admin-cloud__metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .asset-admin-workspace,
   .asset-admin-preview-grid {
     grid-template-columns: 1fr;
@@ -445,6 +2319,115 @@
 
   .asset-admin-header {
     align-items: flex-start;
+  }
+
+  .cloud-material-console {
+    padding: max(16px, env(safe-area-inset-top, 0px)) 12px
+      calc(28px + env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+  }
+
+  .cloud-material-console__ingest {
+    padding: 16px;
+  }
+
+  .cloud-material-console__category {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .cloud-material-console__category small {
+    grid-column: auto;
+    margin-top: 0;
+  }
+
+  .cloud-material-console__processor-pairing {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-material-console__processor-pairing > .cloud-material-console__primary-action {
+    width: 100%;
+  }
+
+  .cloud-material-console__overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-material-console__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-material-console__companions {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-material-console__list {
+    padding: 0 12px;
+  }
+
+  .cloud-material-console__review {
+    padding: 0 12px;
+  }
+
+  .cloud-material-console__review-row {
+    grid-template-columns: 1fr;
+    padding: 12px 0;
+  }
+
+  .cloud-material-console__review-row .cloud-material-console__secondary-action {
+    width: 100%;
+  }
+
+  .cloud-material-console__row {
+    flex-wrap: wrap;
+    padding: 10px 0;
+  }
+
+  .cloud-material-console__row em {
+    width: calc(100% - 28px);
+    margin-left: 28px;
+  }
+
+  .cloud-material-console__node {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cloud-material-console__node > em {
+    margin-left: 29px;
+  }
+
+  .asset-admin-cloud__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .asset-admin-cloud__controls {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .asset-admin-cloud__controls > span {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .asset-admin-filters {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .asset-admin-filters input {
+    flex: 1 1 150px;
+  }
+
+  .asset-admin-filters select {
+    flex: 1 1 120px;
+  }
+
+  .asset-admin-batch-bar > * {
+    max-width: 100%;
   }
 
   .asset-admin-back {

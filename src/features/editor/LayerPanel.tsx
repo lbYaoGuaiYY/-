@@ -17,6 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import {
   DotsSixVertical,
+  DotsThreeVertical,
   Eye,
   EyeSlash,
   Image,
@@ -83,6 +84,7 @@ export function LayerPanel({
     readonly x: number
     readonly y: number
   } | null>(null)
+  const [touchMultiSelect, setTouchMultiSelect] = useState(false)
   const displayLayers = useMemo(() => {
     const layerById = new Map(layers.map((layer) => [layer.id, layer]))
     return toLayerPanelOrder(layers.map((layer) => layer.id)).flatMap((id) => {
@@ -121,14 +123,25 @@ export function LayerPanel({
             <span className="panel-selection-count">已选 {selectedLayerIds.length}</span>
           )}
         </h2>
-        <button
-          className="icon-button mobile-panel-close"
-          type="button"
-          aria-label="关闭图层面板"
-          onClick={onClose}
-        >
-          <X size={16} aria-hidden="true" />
-        </button>
+        <div className="panel-header-actions">
+          <button
+            className="text-button touch-only layer-selection-toggle"
+            type="button"
+            aria-label={touchMultiSelect ? "退出多选" : "启用多选"}
+            aria-pressed={touchMultiSelect}
+            onClick={() => setTouchMultiSelect((active) => !active)}
+          >
+            {touchMultiSelect ? "完成" : "多选"}
+          </button>
+          <button
+            className="icon-button mobile-panel-close"
+            type="button"
+            aria-label="关闭图层面板"
+            onClick={onClose}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
       </header>
       {displayLayers.length === 0 ? (
         <div className="empty-state layer-empty">
@@ -161,6 +174,7 @@ export function LayerPanel({
                   onLayerStateChange={onLayerStateChange}
                   onOpenContextMenu={openContextMenu}
                   onSelect={onSelect}
+                  touchMultiSelect={touchMultiSelect}
                 />
               ))}
             </ul>
@@ -195,6 +209,7 @@ function SortableLayerRow({
   onLayerStateChange,
   onOpenContextMenu,
   onSelect,
+  touchMultiSelect,
 }: {
   readonly layer: ImageLayer
   readonly position: number
@@ -207,6 +222,7 @@ function SortableLayerRow({
   ) => void
   readonly onOpenContextMenu: (layer: ImageLayer, x: number, y: number) => void
   readonly onSelect: (id: LayerId, additive?: boolean) => void
+  readonly touchMultiSelect: boolean
 }) {
   const sortable = useSortable({ id: layer.id, disabled: { draggable: layer.locked } })
   return (
@@ -253,7 +269,9 @@ function SortableLayerRow({
         className="layer-select"
         type="button"
         aria-current={selected ? "true" : undefined}
-        onClick={(event) => onSelect(layer.id, event.shiftKey || event.ctrlKey || event.metaKey)}
+        onClick={(event) =>
+          onSelect(layer.id, touchMultiSelect || event.shiftKey || event.ctrlKey || event.metaKey)
+        }
       >
         <span className="layer-name" title={layer.name}>
           {layer.name}
@@ -287,6 +305,17 @@ function SortableLayerRow({
           )}
         </button>
       </span>
+      <button
+        className="icon-button touch-only layer-more-button"
+        type="button"
+        aria-label={`更多${layer.name}操作`}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          onOpenContextMenu(layer, rect.left, rect.bottom + 4)
+        }}
+      >
+        <DotsThreeVertical size={18} aria-hidden="true" />
+      </button>
     </li>
   )
 }

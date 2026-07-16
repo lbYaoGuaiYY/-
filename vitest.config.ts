@@ -5,7 +5,7 @@ export default defineConfig({
     clearMocks: true,
     environment: "jsdom",
     exclude: ["tests/e2e/**", "node_modules/**", "dist/**"],
-    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx", "tests/**/*.test.mjs"],
     mockReset: true,
     passWithNoTests: false,
     restoreMocks: true,

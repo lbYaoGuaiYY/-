@@ -8,6 +8,7 @@ import {
   type PositionDelta,
 } from "./alignment-geometry"
 import type { AssetRecord, AssetRegistry } from "./asset-registry"
+import { getCanvasBoundsTranslation } from "./canvas-bounds"
 import { clampAssetCenter, type LayerPlacementRequest } from "./drag-placement"
 import type {
   AssetId,
@@ -50,6 +51,11 @@ export class FabricRuntime {
   private displayMode: "fit" | "manual" = "fit"
   private backgroundAssetId: AssetId | null = null
   private snapGuideObjects: readonly Line[] = []
+  private touchSelectionPinch: {
+    readonly object: FabricImage
+    readonly scaleX: number
+    readonly scaleY: number
+  } | null = null
 
   constructor(element: HTMLCanvasElement) {
     const styles = getComputedStyle(element)
@@ -62,8 +68,10 @@ export class FabricRuntime {
       selectionBorderColor: this.accentColor,
       selectionColor: `${this.accentColor}22`,
     })
-    this.canvas.on("object:moving", ({ target }) => this.snapMovingObject(target))
-    this.canvas.on("object:modified", ({ target }) => this.snapMovingObject(target))
+    this.canvas.on("object:moving", ({ target }) => this.constrainMovingObject(target))
+    this.canvas.on("object:scaling", ({ target }) => this.constrainMovingObject(target))
+    this.canvas.on("object:rotating", ({ target }) => this.constrainMovingObject(target))
+    this.canvas.on("object:modified", ({ target }) => this.constrainMovingObject(target))
     this.canvas.on("mouse:up", () => this.clearSnapGuides())
   }
 
@@ -209,6 +217,40 @@ export class FabricRuntime {
 
   hasObjectAtPointer(event: PointerEvent): boolean {
     return this.canvas.findTarget(event).target !== undefined
+  }
+
+  cancelActiveTransform(): void {
+    if (this.canvas._currentTransform !== null) this.canvas.endCurrentTransform()
+  }
+
+  beginSelectionPinch(): boolean {
+    const object = this.canvas.getActiveObject()
+    if (!(object instanceof FabricImage)) return false
+    this.touchSelectionPinch = {
+      object,
+      scaleX: object.scaleX,
+      scaleY: object.scaleY,
+    }
+    return true
+  }
+
+  previewSelectionPinch(scaleRatio: number): boolean {
+    const pinch = this.touchSelectionPinch
+    if (pinch === null || !Number.isFinite(scaleRatio) || scaleRatio <= 0) return false
+    const scale = Math.max(0.01, scaleRatio)
+    pinch.object.set({ scaleX: pinch.scaleX * scale, scaleY: pinch.scaleY * scale })
+    pinch.object.setCoords()
+    this.canvas.requestRenderAll()
+    return true
+  }
+
+  finishSelectionPinch(): boolean {
+    const pinch = this.touchSelectionPinch
+    this.touchSelectionPinch = null
+    return (
+      pinch !== null &&
+      (pinch.object.scaleX !== pinch.scaleX || pinch.object.scaleY !== pinch.scaleY)
+    )
   }
 
   selectLayer(id: LayerId, additive = false): boolean {
@@ -396,6 +438,18 @@ export class FabricRuntime {
       return
     }
     this.canvas.setActiveObject(new ActiveSelection([...objects], { canvas: this.canvas }))
+  }
+
+  private constrainMovingObject(target: FabricObject): void {
+    this.snapMovingObject(target)
+    const translation = getCanvasBoundsTranslation(target.getBoundingRect(), {
+      width: this.canvas.getWidth(),
+      height: this.canvas.getHeight(),
+    })
+    if (translation.x === 0 && translation.y === 0) return
+    target.set({ left: target.left + translation.x, top: target.top + translation.y })
+    target.setCoords()
+    this.canvas.requestRenderAll()
   }
 
   private snapMovingObject(target: FabricObject): void {

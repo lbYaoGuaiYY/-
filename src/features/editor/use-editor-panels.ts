@@ -74,27 +74,59 @@ export function useEditorPanels() {
 
   const closeAssets = useCallback(() => setAssetsOpen(false), [])
   const closeRightPanel = useCallback(() => setRightPanel("closed"), [])
+  const closeAll = useCallback((): void => {
+    setAssetsOpen(false)
+    setRightPanel("closed")
+    setTemporarilyHidden(false)
+  }, [])
+
+  const toggleAssetsPanel = useCallback((): void => {
+    setAssetsOpen((open) => {
+      const next = !open
+      if (next && viewport !== "desktop") setRightPanel("closed")
+      return next
+    })
+    setTemporarilyHidden(false)
+  }, [viewport])
+
+  const toggleRightPanel = useCallback(
+    (mode: "layers" | "properties"): void => {
+      setRightPanel((current) => {
+        if (current === mode) return "closed"
+        if (viewport !== "desktop") setAssetsOpen(false)
+        return mode
+      })
+      setTemporarilyHidden(false)
+    },
+    [viewport],
+  )
 
   return useMemo(
     () => ({
       viewport,
       assetsOpen,
       rightPanel,
+      closeAll,
       closeAssets,
       closeRightPanel,
       openAssets,
       openRightPanel,
       toggleAssets,
+      toggleAssetsPanel,
+      toggleRightPanel,
       toggleTemporary,
     }),
     [
       assetsOpen,
+      closeAll,
       closeAssets,
       closeRightPanel,
       openAssets,
       openRightPanel,
       rightPanel,
       toggleAssets,
+      toggleAssetsPanel,
+      toggleRightPanel,
       toggleTemporary,
       viewport,
     ],

@@ -75,6 +75,20 @@ function floralArchLayer(page: Page): Locator {
 }
 
 test.describe("editor acceptance contract", () => {
+  test("uses the neutral charcoal workspace theme", async ({ page }) => {
+    await openEditor(page)
+    const theme = await page.locator(":root").evaluate((node) => {
+      const style = getComputedStyle(node)
+      return {
+        app: style.getPropertyValue("--surface-app").trim(),
+        panel: style.getPropertyValue("--surface-panel").trim(),
+        selected: style.getPropertyValue("--surface-selected").trim(),
+      }
+    })
+
+    expect(theme).toEqual({ app: "#161616", panel: "#252525", selected: "#3f3f3f" })
+  })
+
   test("keeps material ingestion out of the editor surface", async ({ page }) => {
     // Given: the ordinary editor build is opened for a planner.
     await openEditor(page)

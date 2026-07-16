@@ -1,7 +1,8 @@
 import { ArrowClockwise, HardDrive, MagnifyingGlass } from "@phosphor-icons/react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { LibraryAsset } from "./asset-library"
+import { type AssetServiceHealth, readAssetServiceHealth } from "./asset-service-health"
 import { DraggableAssetTile } from "./DraggableAssetTile"
 import { ASSET_CATEGORIES, type AssetCategory } from "./demo-assets"
 
@@ -37,6 +38,15 @@ export function AssetPanel({
   status,
 }: AssetPanelProps) {
   const gridRef = useRef<HTMLDivElement>(null)
+  const [health, setHealth] = useState<AssetServiceHealth | null>(null)
+  useEffect(() => {
+    const refreshHealth = (): void => {
+      void readAssetServiceHealth().then(setHealth)
+    }
+    refreshHealth()
+    const timer = window.setInterval(refreshHealth, 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const assetVirtualizer = useVirtualizer({
     count: assets.length,
     estimateSize: () => 232,
@@ -52,6 +62,15 @@ export function AssetPanel({
         <div className="asset-panel__heading">
           <h2 id="asset-panel-title">素材</h2>
           <span className="asset-panel__heading-actions">
+            <span className={`asset-panel__connection is-${health?.connection ?? "checking"}`}>
+              {health === null
+                ? "检测中"
+                : health.connection === "online"
+                  ? "云素材在线"
+                  : health.connection === "slow"
+                    ? "云素材较慢"
+                    : "使用本地缓存"}
+            </span>
             <span className="asset-panel__count">{assets.length} 项</span>
             <button
               className="icon-button"
@@ -119,7 +138,7 @@ export function AssetPanel({
       <div className="asset-panel__content">
         {status === "error" && (
           <p className="asset-panel__notice notice-error" role="status">
-            本地素材服务暂时不可用，已显示内置素材。
+            云端素材服务暂时不可用，已显示内置素材。
           </p>
         )}
 

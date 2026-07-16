@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "轻抠",
+  "version": "0.2.0",
+  "identifier": "com.qingshe.processor",
+  "build": {
+    "frontendDist": "../dist-processor",
+    "devUrl": "http://127.0.0.1:4176",
+    "beforeDevCommand": "pnpm processor:web:dev",
+    "beforeBuildCommand": "pnpm processor:web:build"
+  },
+  "app": {
+    "macOSPrivateApi": false,
+    "windows": [
+      {
+        "label": "processor",
+        "title": "轻抠",
+        "url": "processor.html",
+        "width": 1,
+        "height": 1,
+        "visible": false,
+        "decorations": false,
+        "resizable": false,
+        "fullscreen": false,
+        "skipTaskbar": true,
+        "transparent": true,
+        "focus": false
+      }
+    ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["qingshe-processor"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "externalBin": ["binaries/qingshe-processing-agent"],
+    "icon": [
+      "icons/processor/32x32.png",
+      "icons/processor/128x128.png",
+      "icons/processor/128x128@2x.png",
+      "icons/processor/icon.icns",
+      "icons/processor/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}

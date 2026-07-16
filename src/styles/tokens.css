@@ -3,22 +3,22 @@
   font-family: "Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --surface-app: #111318;
-  --surface-stage: #15181d;
-  --surface-panel: #1c2026;
-  --surface-control: #252a32;
-  --surface-hover: #2d333d;
-  --surface-selected: #303b4d;
+  --surface-app: #161616;
+  --surface-stage: #202020;
+  --surface-panel: #252525;
+  --surface-control: #303030;
+  --surface-hover: #3a3a3a;
+  --surface-selected: #3f3f3f;
   --canvas-white: #ffffff;
-  --border-default: #303640;
-  --border-strong: #424a56;
-  --text-primary: #f0f2f5;
-  --text-secondary: #aab1bc;
-  --text-muted: #a0a8b3;
-  --accent-primary: #5b8def;
-  --accent-hover: #73a0f5;
-  --accent-strong: #416fce;
-  --accent-strong-hover: #365fb8;
+  --border-default: #3c3c3c;
+  --border-strong: #555555;
+  --text-primary: #f2f2f2;
+  --text-secondary: #b8b8b8;
+  --text-muted: #a8a8a8;
+  --accent-primary: #4d8dff;
+  --accent-hover: #70a5ff;
+  --accent-strong: #3b6dc7;
+  --accent-strong-hover: #325dad;
   --status-success: #45c98a;
   --status-warning: #e7b657;
   --status-error: #ed6b72;
@@ -45,14 +45,16 @@
 html,
 body,
 #root {
-  min-width: 320px;
+  width: 100%;
+  min-width: 0;
   min-height: 100%;
   margin: 0;
 }
 
 body {
   min-height: 100dvh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
   background: var(--surface-app);
   color: var(--text-primary);
   font-size: 14px;

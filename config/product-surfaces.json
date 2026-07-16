@@ -1,0 +1,34 @@
+{
+  "editor": {
+    "name": "轻设 App（主产品）",
+    "mode": "app",
+    "html": "index.html",
+    "entry": "src/main.tsx",
+    "outDir": "dist",
+    "runtimes": ["web", "windows", "macos", "ipados"]
+  },
+  "assetPanel": {
+    "name": "云素材面板",
+    "mode": "asset-admin",
+    "html": "asset-admin.html",
+    "entry": "src/asset-admin-main.tsx",
+    "outDir": "dist-asset-admin",
+    "runtime": "server-browser",
+    "publicUrl": "https://assets.xiduoduo.top/admin/asset-admin.html",
+    "supportPages": ["manual.html", "product.html"]
+  },
+  "browserExtension": {
+    "name": "轻设浏览器插件",
+    "root": "browser-extension",
+    "runtime": "browser-extension"
+  },
+  "processor": {
+    "name": "轻抠（菜单栏/托盘角标）",
+    "mode": "processor",
+    "html": "processor.html",
+    "entry": "src/processor-main.tsx",
+    "outDir": "dist-processor",
+    "runtime": "desktop-app",
+    "tauriConfig": "src-tauri/tauri.processor.conf.json"
+  }
+}

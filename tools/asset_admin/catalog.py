@@ -321,6 +321,36 @@ class Catalog:
             self._connection.execute("UPDATE jobs SET status='pending' WHERE status='processing'")
         return {"integrity": integrity, "indexed": len(rows)}
 
+    def statistics(self) -> dict[str, int]:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN status='ready' AND needs_review=0 THEN 1 ELSE 0 END) AS ready,
+                    SUM(CASE WHEN status='ready' AND needs_review=1 THEN 1 ELSE 0 END) AS review,
+                    SUM(CASE WHEN status='deleted' THEN 1 ELSE 0 END) AS deleted,
+                    SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) AS processing,
+                    SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+                FROM assets
+                """
+            ).fetchone()
+        asset_bytes = sum(
+            file.stat().st_size
+            for directory in (self.paths.originals, self.paths.processed, self.paths.thumbnails)
+            for file in directory.rglob("*")
+            if file.is_file()
+        )
+        return {
+            "total": int(row["total"] or 0),
+            "ready": int(row["ready"] or 0),
+            "review": int(row["review"] or 0),
+            "deleted": int(row["deleted"] or 0),
+            "processing": int(row["processing"] or 0),
+            "failed": int(row["failed"] or 0),
+            "bytes": asset_bytes,
+        }
+
     def _index_asset(self, row: sqlite3.Row) -> None:
         self._connection.execute("DELETE FROM assets_fts WHERE asset_id=?", (row["id"],))
         self._connection.execute(

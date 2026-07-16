@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie"
 import { z } from "zod"
-import { isDesktopRuntime } from "../projects/tauri-runtime"
+import { isDesktopRuntime } from "../../platform/runtime"
 import type { ServiceAsset } from "./asset-service-client"
 import { ASSET_CATEGORIES, type AssetCategory } from "./demo-assets"
 import { nativeCloudAssetCache } from "./native-cloud-asset-cache"

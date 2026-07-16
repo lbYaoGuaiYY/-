@@ -1,7 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
-import { AssetAdminApp } from "./features/asset-admin/AssetAdminApp"
+import { RemoteAssetAdminApp } from "./features/asset-admin/RemoteAssetAdminApp"
 import "./styles/tokens.css"
 import "./styles/layout.css"
 import "./styles/components.css"
@@ -19,6 +19,6 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <AssetAdminApp />
+    <RemoteAssetAdminApp />
   </StrictMode>,
 )

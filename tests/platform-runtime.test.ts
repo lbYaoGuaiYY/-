@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import {
-  getPlatformRuntime,
-  isDesktopRuntime,
-  isMobileRuntime,
-} from "../src/features/projects/tauri-runtime"
+import { getPlatformRuntime, isDesktopRuntime, isMobileRuntime } from "../src/platform/runtime"
 
 type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown }
 

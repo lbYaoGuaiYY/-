@@ -12,6 +12,17 @@ export type PixelBounds = {
 }
 
 const MIN_VISIBLE_ALPHA = 8
+const MAX_ALPHA_SCAN_PIXELS = 4_000_000
+
+export function shouldInspectAlphaBounds(width: number, height: number): boolean {
+  return (
+    Number.isSafeInteger(width) &&
+    Number.isSafeInteger(height) &&
+    width > 0 &&
+    height > 0 &&
+    width * height <= MAX_ALPHA_SCAN_PIXELS
+  )
+}
 
 export function findVisiblePixelBounds({ data, width, height }: PixelBuffer): PixelBounds | null {
   if (width <= 0 || height <= 0) return null

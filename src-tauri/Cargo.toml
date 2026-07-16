@@ -11,7 +11,16 @@ rust-version = "1.95"
 
 [lib]
 name = "qingshe_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = []
+processor = [
+  "dep:tauri-plugin-deep-link",
+  "dep:tauri-plugin-shell",
+  "dep:tauri-plugin-single-instance",
+  "tauri/tray-icon",
+]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
@@ -20,6 +29,10 @@ tauri-build = { version = "2.6.3", features = [] }
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
+tauri-plugin-shell = { version = "2.3.5", optional = true }
+tauri-plugin-deep-link = { version = "2.4.9", optional = true }
+tauri-plugin-single-instance = { version = "2.4.3", features = ["deep-link"], optional = true }
+serde_json = "1"
 
 [patch.crates-io]
 # Xcode 27 beta can trap inside Wry's iOS WebKit bundle-version probe before

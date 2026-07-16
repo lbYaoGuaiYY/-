@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>轻设浏览器插件 · 预览</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="preview.css" />
+  </head>
+  <body>
+    <main class="popup-shell" aria-label="轻设浏览器插件插件预览">
+      <header class="popup-header">
+        <div><span class="mark">轻</span><div><strong>轻设浏览器插件</strong><small>ChatGPT · 已识别当前网页</small></div></div>
+        <button type="button">重新扫描</button>
+      </header>
+      <p class="status">已识别 3 张候选图片</p>
+      <div class="toolbar"><label><input type="checkbox" checked /> 全选</label><span>3 张图片 · 已选 2 张</span></div>
+      <section class="image-list" aria-label="已识别图片">
+        <article class="image-item is-selected"><label><input type="checkbox" checked /><div><img src="/dist-asset-admin/assets/burgundy-autumn-floral-CWg-_WaX.png" alt="秋季花艺" /><span>01-秋季花艺.png</span></div></label></article>
+        <article class="image-item is-selected"><label><input type="checkbox" checked /><div><img src="/dist-asset-admin/assets/burgundy-autumn-floral-CWg-_WaX.png" alt="婚礼花艺" /><span>02-婚礼花艺.png</span></div></label></article>
+        <article class="image-item"><label><input type="checkbox" /><div><img src="/dist-asset-admin/assets/burgundy-autumn-floral-CWg-_WaX.png" alt="桌面花束" /><span>03-桌面花束.png</span></div></label></article>
+      </section>
+      <footer class="actions"><button type="button">下载所选</button><button type="button">打包 ZIP</button><button class="primary" type="button">发送到素材面板</button></footer>
+    </main>
+  </body>
+</html>
