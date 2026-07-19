@@ -25,7 +25,9 @@
         } catch {
           // Keep the status-based message when the response is not JSON.
         }
-        throw new Error(detail)
+        const error = new Error(detail)
+        error.status = response.status
+        throw error
       }
       if (response.status === 204) return null
       return response.json()

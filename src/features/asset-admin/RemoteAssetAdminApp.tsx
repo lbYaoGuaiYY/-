@@ -24,6 +24,7 @@ import {
   isRemoteAdminAuthError,
   loginRemoteAssetAdmin,
   pairRemoteExtensionDevice,
+  pairRemoteProcessingNode,
   processingAgentDownloadUrl,
   processingNodePlatformLabel,
   type RemoteProcessingDashboard,
@@ -107,7 +108,7 @@ export function RemoteAssetAdminApp() {
       setAuthState("signed-out")
       setDashboard(null)
       const detail = error instanceof Error ? error.message : "云端处理状态暂时不可读取"
-      setAuthMessage(`云端连接失败：${detail}`)
+      setAuthMessage("云端素材服务暂时不可达，请检查网络后重试。")
       setMessage(detail)
     }
   }, [])
@@ -285,10 +286,16 @@ export function RemoteAssetAdminApp() {
     }
   }
 
-  function launchLocalProcessor(): void {
+  async function launchLocalProcessor(): Promise<void> {
     setProcessorLaunchState("launching")
-    setMessage("正在检查并启动此电脑的轻抠…")
-    window.location.href = buildProcessorLaunchUrl(processorClientId)
+    setMessage("正在安全连接并启动此电脑的轻抠…")
+    try {
+      const paired = await pairRemoteProcessingNode(processorClientId)
+      window.location.href = buildProcessorLaunchUrl(processorClientId, paired.token)
+    } catch (error) {
+      setProcessorLaunchState("missing")
+      setMessage(error instanceof Error ? `轻抠连接失败：${error.message}` : "轻抠连接失败")
+    }
   }
 
   if (authState !== "signed-in") {
@@ -512,7 +519,7 @@ export function RemoteAssetAdminApp() {
               className="material-panel__processor-control"
               aria-label="检查并启动此电脑轻抠"
               title="点击或双击检查并启动轻抠"
-              onClick={launchLocalProcessor}
+              onClick={() => void launchLocalProcessor()}
             >
               <div className="material-panel__processor-icon" aria-hidden="true">
                 <Laptop size={22} />
@@ -535,7 +542,7 @@ export function RemoteAssetAdminApp() {
             <button
               className="material-panel__button is-primary"
               type="button"
-              onClick={launchLocalProcessor}
+              onClick={() => void launchLocalProcessor()}
             >
               <Play size={17} aria-hidden="true" />
               {localProcessorIsOnline ? "打开轻抠" : "检测并启动"}

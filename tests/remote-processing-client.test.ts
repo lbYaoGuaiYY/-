@@ -6,6 +6,7 @@ import {
   parseRemoteProcessingDashboard,
   processingAgentDownloadUrl,
   processingNodePlatformLabel,
+  processorPlatformFromUserAgent,
   selectLocalProcessingNode,
   selectPreferredProcessingNode,
 } from "../src/features/asset-admin/remote-processing-client"
@@ -138,8 +139,19 @@ describe("remote processing dashboard", () => {
   })
 
   it("builds the installed processor deep link for this panel", () => {
-    expect(buildProcessorLaunchUrl("33333333-3333-4333-8333-333333333333")).toBe(
-      "qingshe-processor://open?client_id=33333333-3333-4333-8333-333333333333",
+    expect(
+      buildProcessorLaunchUrl(
+        "33333333-3333-4333-8333-333333333333",
+        "processor_pairing_token_1234",
+      ),
+    ).toBe(
+      "qingshe-processor://open?client_id=33333333-3333-4333-8333-333333333333&token=processor_pairing_token_1234",
+    )
+    expect(processorPlatformFromUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).toBe(
+      "windows",
+    )
+    expect(processorPlatformFromUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")).toBe(
+      "macos",
     )
   })
 

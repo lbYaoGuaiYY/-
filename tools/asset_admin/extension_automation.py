@@ -85,6 +85,10 @@ class ExtensionAutomationStore:
                 """
             )
 
+    def close(self) -> None:
+        with self._lock:
+            self._connection.close()
+
     @staticmethod
     def _hash_token(token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()

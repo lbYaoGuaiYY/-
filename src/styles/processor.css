@@ -64,3 +64,9 @@ body {
   padding: 4px 8px;
   cursor: pointer;
 }
+
+.processor-card button:disabled {
+  color: #8a8a8e;
+  cursor: not-allowed;
+  opacity: 0.72;
+}

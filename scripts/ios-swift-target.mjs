@@ -1,4 +1,4 @@
-import { join } from "node:path"
+import { posix } from "node:path"
 
 const IOS_VERSION_PATTERN = /^\d+(?:\.\d+){1,2}$/
 
@@ -29,7 +29,7 @@ export function getIosSwiftLinkSearchPath(swiftTarget, configuration) {
 export function getIosSwiftProductsPath(buildPath, swiftTarget, configuration) {
   const productConfiguration = configuration === "release" ? "Release" : "Debug"
   const sdk = swiftTarget.endsWith("-simulator") ? "iphonesimulator" : "iphoneos"
-  return join(buildPath, "out", "Products", `${productConfiguration}-${sdk}`)
+  return posix.join(buildPath, "out", "Products", `${productConfiguration}-${sdk}`)
 }
 
 if (process.argv[1]?.endsWith("ios-swift-target.mjs")) {

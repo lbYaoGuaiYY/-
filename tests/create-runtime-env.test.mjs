@@ -12,11 +12,12 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 describe("cloud editor runtime environment", () => {
   it("writes Vite-readable editor settings to the project root", async () => {
     const temporaryRoot = await mkdtemp(resolve(tmpdir(), "qingshe-runtime-env-"))
-    const scriptSource = resolve(projectRoot, "deploy/asset-cloud/create-runtime-env.sh")
-    const scriptPath = resolve(temporaryRoot, "deploy/asset-cloud/create-runtime-env.sh")
+    const scriptSource = resolve(projectRoot, "scripts/create-runtime-env.mjs")
+    const scriptPath = resolve(temporaryRoot, "scripts/create-runtime-env.mjs")
 
     try {
       await mkdir(dirname(scriptPath), { recursive: true })
+      await mkdir(resolve(temporaryRoot, "deploy/asset-cloud"), { recursive: true })
       await cp(scriptSource, scriptPath)
       await writeFile(
         resolve(temporaryRoot, "deploy/asset-cloud/.env"),
@@ -29,7 +30,7 @@ describe("cloud editor runtime environment", () => {
         { mode: 0o600 },
       )
 
-      await execFileAsync("sh", [scriptPath], { cwd: temporaryRoot })
+      await execFileAsync(process.execPath, [scriptPath], { cwd: temporaryRoot })
 
       const editorEnv = await readFile(resolve(temporaryRoot, ".env.local"), "utf8")
       expect(editorEnv).toContain("VITE_ASSET_SERVICE_URL=https://assets.xiduoduo.top/api/v1")
@@ -38,6 +39,16 @@ describe("cloud editor runtime environment", () => {
       expect(editorEnv).toContain("VITE_ASSET_SERVICE_EVENTS=0")
       expect(editorEnv).not.toContain("VITE_ASSET_ADMIN_SERVICE_URL")
       expect(editorEnv).not.toContain("VITE_ASSET_CLOUD_ADMIN_TOKEN")
+
+      const cloudEnv = await readFile(resolve(temporaryRoot, "deploy/asset-cloud/.env"), "utf8")
+      expect(cloudEnv).toContain("QINGSHE_ADMIN_USERNAME=admin")
+      expect(cloudEnv).toMatch(/QINGSHE_ADMIN_PASSWORD_HASH=[A-Za-z0-9_-]+/)
+      expect(cloudEnv).toMatch(/QINGSHE_ADMIN_SESSION_SECRET=[a-f0-9]{64}/)
+      const credentials = await readFile(
+        resolve(temporaryRoot, "deploy/asset-cloud/.admin-credentials"),
+        "utf8",
+      )
+      expect(credentials).toMatch(/password=[A-Za-z0-9_-]{24}/)
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
     }
@@ -45,13 +56,13 @@ describe("cloud editor runtime environment", () => {
 
   it("includes the production asset-admin origin in a fresh cloud environment", async () => {
     const temporaryRoot = await mkdtemp(resolve(tmpdir(), "qingshe-runtime-origin-"))
-    const scriptSource = resolve(projectRoot, "deploy/asset-cloud/create-runtime-env.sh")
-    const scriptPath = resolve(temporaryRoot, "deploy/asset-cloud/create-runtime-env.sh")
+    const scriptSource = resolve(projectRoot, "scripts/create-runtime-env.mjs")
+    const scriptPath = resolve(temporaryRoot, "scripts/create-runtime-env.mjs")
 
     try {
       await mkdir(dirname(scriptPath), { recursive: true })
       await cp(scriptSource, scriptPath)
-      await execFileAsync("sh", [scriptPath], { cwd: temporaryRoot })
+      await execFileAsync(process.execPath, [scriptPath], { cwd: temporaryRoot })
 
       const cloudEnv = await readFile(resolve(temporaryRoot, "deploy/asset-cloud/.env"), "utf8")
       expect(cloudEnv).toContain("https://assets.xiduoduo.top")

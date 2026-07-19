@@ -1,10 +1,19 @@
 const PANEL_ORIGIN = "https://assets.xiduoduo.top"
 const MIN_IMAGE_EDGE = 128
 const MAX_BRIDGE_CHUNK = 192 * 1024
+const IMAGE_MIME_TYPES = {
+  avif: "image/avif",
+  gif: "image/gif",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+}
 const transfers = new Map()
 const pendingPanelFiles = []
 let panelReady = false
 const discoveredSources = new Set()
+const activeAutomationItems = new Map()
 let discoveryTimer = null
 
 function absoluteUrl(value) {
@@ -57,14 +66,30 @@ function isUsefulImage(image, source) {
   return true
 }
 
+function contentTypeForSource(source) {
+  try {
+    const extension = new URL(source).pathname.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase()
+    return extension ? IMAGE_MIME_TYPES[extension] || null : null
+  } catch {
+    return null
+  }
+}
+
+function extensionForContentType(contentType) {
+  const normalized = String(contentType || "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase()
+  if (normalized === "image/jpeg" || normalized === "image/jpg") return "jpg"
+  if (normalized === "image/webp") return "webp"
+  if (normalized === "image/avif") return "avif"
+  if (normalized === "image/gif") return "gif"
+  return "png"
+}
+
 function filenameFor(item, index, contentType = "image/png") {
   const raw = (item.alt || item.title || "ai-image").trim().replace(/[^\w\-\u4e00-\u9fff]+/g, "-")
-  const extension =
-    contentType.includes("jpeg") || contentType.includes("jpg")
-      ? "jpg"
-      : contentType.includes("webp")
-        ? "webp"
-        : "png"
+  const extension = extensionForContentType(contentType)
   return `${String(index + 1).padStart(2, "0")}-${raw.slice(0, 48) || "ai-image"}.${extension}`
 }
 
@@ -95,7 +120,7 @@ function dataUrlFromImage(image) {
 }
 
 async function portableSource(source, image) {
-  if (!source.startsWith("blob:")) return { source, contentType: null }
+  if (!source.startsWith("blob:")) return { source, contentType: contentTypeForSource(source) }
   try {
     const response = await fetch(source)
     if (!response.ok) throw new Error(`图片读取失败（${response.status}）`)
@@ -141,16 +166,32 @@ function usefulImageSources() {
   )
 }
 
-function waitForStableGeneratedImage(baseline, { stabilityMs = 2_000, timeoutMs = 240_000 } = {}) {
+function waitForStableGeneratedImage(
+  baseline,
+  { stabilityMs = 2_000, timeoutMs = 240_000, signal } = {},
+) {
   return new Promise((resolve, reject) => {
     let candidate = null
     let candidateSource = null
     let stabilityTimer = null
+    let timeoutTimer = null
+    let observer = null
     let settled = false
+    const handleImageLoad = (event) => {
+      if (event.target instanceof HTMLImageElement) check()
+    }
     const cleanup = () => {
-      observer.disconnect()
-      clearTimeout(timeoutTimer)
+      observer?.disconnect()
+      document.removeEventListener("load", handleImageLoad, true)
+      if (timeoutTimer !== null) clearTimeout(timeoutTimer)
       if (stabilityTimer !== null) clearTimeout(stabilityTimer)
+      signal?.removeEventListener("abort", abort)
+    }
+    const abort = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(signal?.reason instanceof Error ? signal.reason : new Error("生成任务已取消"))
     }
     const settleWithImage = async () => {
       if (
@@ -196,39 +237,111 @@ function waitForStableGeneratedImage(baseline, { stabilityMs = 2_000, timeoutMs 
       if (stabilityTimer !== null) clearTimeout(stabilityTimer)
       stabilityTimer = setTimeout(() => void settleWithImage(), stabilityMs)
     }
-    const observer = new MutationObserver(check)
+    observer = new MutationObserver(check)
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["src", "srcset", "data-src", "data-original", "data-url"],
       childList: true,
       subtree: true,
     })
-    const timeoutTimer = setTimeout(() => {
+    document.addEventListener("load", handleImageLoad, true)
+    timeoutTimer = setTimeout(() => {
       if (settled) return
       settled = true
       cleanup()
       reject(new Error("等待生成图片超时"))
     }, timeoutMs)
+    if (signal?.aborted) {
+      abort()
+      return
+    }
+    signal?.addEventListener("abort", abort, { once: true })
     check()
   })
 }
 
-async function generateAutomationItem(message) {
+function automationItemKey(message) {
+  return `${String(message?.runId || "")}:${String(message?.itemId || "")}`
+}
+
+async function sendRuntimeMessageWithRetry(message, { attempts = 8, delayMs = 250 } = {}) {
+  let lastError = null
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await chrome.runtime.sendMessage(message)
+      if (response?.ok === false) throw new Error(response.error || "轻设插件后台拒绝了任务")
+      return response
+    } catch (error) {
+      lastError = error
+      if (attempt + 1 < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)))
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("无法连接轻设插件后台")
+}
+
+async function generateAutomationItem(message, signal) {
   const adapters = globalThis.QingsheProviderAdapters
   const provider = adapters?.providers?.[message.provider]
   if (!provider) throw new Error("当前生成站点不受支持")
   const baseline = usefulImageSources()
-  const generatedImage = waitForStableGeneratedImage(baseline)
-  const itemPrompt = adapters.buildItemPrompt(message.prompt, message.ordinal, message.total)
-  await adapters.submitPrompt(provider, itemPrompt)
-  const image = await generatedImage
-  image.filename = `${String(message.ordinal).padStart(2, "0")}-${image.filename.replace(/^\d+-/, "")}`
-  await chrome.runtime.sendMessage({
-    type: "QINGSHE_AUTOMATION_IMAGE",
-    runId: message.runId,
-    itemId: message.itemId,
-    image,
+  const waitController = new AbortController()
+  const stopWaiting = () => waitController.abort(signal?.reason)
+  signal?.addEventListener("abort", stopWaiting, { once: true })
+  const generatedImage = waitForStableGeneratedImage(baseline, {
+    signal: waitController.signal,
   })
+  const itemPrompt = adapters.buildItemPrompt(message.prompt, message.ordinal, message.total)
+  try {
+    await adapters.submitPrompt(provider, itemPrompt)
+    const image = await generatedImage
+    image.filename = `${String(message.ordinal).padStart(2, "0")}-${image.filename.replace(/^\d+-/, "")}`
+    await sendRuntimeMessageWithRetry({
+      type: "QINGSHE_AUTOMATION_IMAGE",
+      runId: message.runId,
+      itemId: message.itemId,
+      image,
+    })
+  } catch (error) {
+    waitController.abort(error)
+    await generatedImage.catch(() => undefined)
+    throw error
+  } finally {
+    signal?.removeEventListener("abort", stopWaiting)
+  }
+}
+
+function startAutomationItem(message) {
+  const key = automationItemKey(message)
+  if (!message?.runId || !message?.itemId || activeAutomationItems.has(key)) return false
+  const controller = new AbortController()
+  const task = generateAutomationItem(message, controller.signal)
+    .catch(async (error) => {
+      if (controller.signal.aborted) return
+      const detail = error instanceof Error ? error.message : "生成图片失败"
+      try {
+        await sendRuntimeMessageWithRetry({
+          type: "QINGSHE_AUTOMATION_ERROR",
+          runId: message.runId,
+          itemId: message.itemId,
+          error: detail,
+        })
+      } catch {
+        // The service worker will recover this item from durable server state.
+      }
+    })
+    .finally(() => activeAutomationItems.delete(key))
+  activeAutomationItems.set(key, { controller, task })
+  return true
+}
+
+function cancelAutomationItem(message) {
+  const key = automationItemKey(message)
+  const active = activeAutomationItems.get(key)
+  if (!active) return false
+  active.controller.abort(new Error("生成任务已取消"))
+  return true
 }
 
 function postFileToPanel(file) {
@@ -284,21 +397,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     )
     return true
   }
+  if (message?.type === "QINGSHE_AUTOMATION_PROVIDER_READY") {
+    const adapters = globalThis.QingsheProviderAdapters
+    const provider = adapters?.providerForUrl?.(location.href)
+    const composerReady =
+      provider?.id === message.provider &&
+      provider.composerSelectors.some((selector) => document.querySelector(selector) !== null)
+    sendResponse({ ok: true, ready: composerReady, provider: provider?.id ?? null })
+    return false
+  }
   if (message?.type === "QINGSHE_AUTOMATION_GENERATE_ITEM") {
-    void generateAutomationItem(message).then(
-      () => sendResponse({ ok: true }),
-      (error) => {
-        const detail = error instanceof Error ? error.message : "生成图片失败"
-        void chrome.runtime.sendMessage({
-          type: "QINGSHE_AUTOMATION_ERROR",
-          runId: message.runId,
-          itemId: message.itemId,
-          error: detail,
-        })
-        sendResponse({ ok: false, error: detail })
-      },
-    )
-    return true
+    const started = startAutomationItem(message)
+    sendResponse({ ok: true, started, active: true })
+    return false
+  }
+  if (message?.type === "QINGSHE_AUTOMATION_QUERY_ITEM") {
+    sendResponse({ active: activeAutomationItems.has(automationItemKey(message)) })
+    return false
+  }
+  if (message?.type === "QINGSHE_AUTOMATION_CANCEL_ITEM") {
+    sendResponse({ ok: true, cancelled: cancelAutomationItem(message) })
+    return false
   }
   if (location.origin !== PANEL_ORIGIN) return false
   if (message?.type === "QINGSHE_BRIDGE_FILE_START") {

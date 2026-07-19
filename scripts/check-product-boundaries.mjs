@@ -11,6 +11,16 @@ async function requireFile(path) {
   await access(resolve(root, path))
 }
 
+async function forbidFile(path, message) {
+  try {
+    await access(resolve(root, path))
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") return
+    throw error
+  }
+  throw new Error(message)
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
@@ -104,12 +114,23 @@ export async function checkProductBoundaries({ artifacts = false } = {}) {
       requireFile(`${manifest.browserExtension.root}/dist/firefox/manifest.json`),
     ])
     for (const forbidden of ["asset-admin.html", "manual.html", "processor.html", "product.html"]) {
-      try {
-        await access(resolve(root, manifest.editor.outDir, forbidden))
-        throw new Error(`轻设 App 构建混入了其他产品页面：${forbidden}`)
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith("轻设 App 构建混入")) throw error
-      }
+      await forbidFile(
+        resolve(manifest.editor.outDir, forbidden),
+        `轻设 App 构建混入了其他产品页面：${forbidden}`,
+      )
+    }
+    for (const browser of ["chrome", "firefox"]) {
+      const extensionDirectory = resolve(manifest.browserExtension.root, "dist", browser)
+      await forbidFile(
+        resolve(extensionDirectory, "preview-runtime.js"),
+        `${browser} 正式扩展混入了开发预览运行时`,
+      )
+      await forbidFile(
+        resolve(extensionDirectory, "scan-active-tab.d.ts"),
+        `${browser} 正式扩展混入了 TypeScript 声明文件`,
+      )
+      const popupHtml = await readFile(resolve(root, extensionDirectory, "popup.html"), "utf8")
+      assert(!popupHtml.includes("preview-runtime.js"), `${browser} 弹窗仍在加载开发预览运行时`)
     }
   }
 }

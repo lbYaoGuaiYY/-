@@ -91,6 +91,48 @@ describe("browser extension scan recovery", () => {
     expect(response.images[0]?.source).toMatch(/^data:image\/png;base64,/)
   })
 
+  it("keeps a remote image filename aligned with its actual URL format", async () => {
+    const generated = document.createElement("img")
+    generated.src = "https://images.example.test/generated-photo.JPEG?download=1"
+    generated.alt = "生成照片"
+    generated.width = 720
+    generated.height = 720
+    Object.defineProperties(generated, {
+      naturalWidth: { value: 1024 },
+      naturalHeight: { value: 1024 },
+    })
+    document.body.append(generated)
+
+    type ScanResponse = { images: Array<{ filename: string; source: string }> }
+    let onMessage:
+      | ((
+          message: { type: string },
+          sender: unknown,
+          sendResponse: (value: ScanResponse) => void,
+        ) => boolean)
+      | null = null
+    new Function("chrome", contentScript)({
+      runtime: {
+        onMessage: {
+          addListener(listener: typeof onMessage) {
+            onMessage = listener
+          },
+        },
+      },
+    })
+
+    const response = await new Promise<ScanResponse>((resolve) => {
+      onMessage?.({ type: "QINGSHE_SCAN" }, {}, resolve)
+    })
+
+    expect(response.images).toEqual([
+      expect.objectContaining({
+        filename: "01-生成照片.jpg",
+        source: "https://images.example.test/generated-photo.JPEG?download=1",
+      }),
+    ])
+  })
+
   it("uses the loaded Gemini image pixels after its blob URL has expired", async () => {
     const generated = document.createElement("img")
     generated.src = "blob:https://gemini.google.com/expired-generated-image"

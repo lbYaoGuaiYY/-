@@ -59,6 +59,10 @@ class Catalog:
         self._connection.row_factory = sqlite3.Row
         self._initialize()
 
+    def close(self) -> None:
+        with self._lock:
+            self._connection.close()
+
     def _initialize(self) -> None:
         with self._lock, self._connection:
             self._connection.executescript(

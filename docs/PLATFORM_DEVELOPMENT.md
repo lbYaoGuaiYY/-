@@ -49,7 +49,9 @@ VITE_ASSET_SERVICE_EVENTS=0
 sh deploy/asset-cloud/create-runtime-env.sh
 ```
 
-脚本从 `deploy/asset-cloud/.env` 读取 `QINGSHE_EDITOR_TOKEN`，将编辑器配置写入项目根目录的 `.env.local`，随后再运行 `pnpm app:dev`、`pnpm app:build` 或 Tauri 构建。普通编辑器环境不写入 Admin URL 或 Admin Token；素材面板使用独立的 `.env.asset-admin.local`。
+脚本以跨平台 Node 实现创建或补全 `deploy/asset-cloud/.env`，将编辑器配置写入项目根目录的 `.env.local`，随后再运行 `pnpm app:dev`、`pnpm app:build` 或 Tauri 构建。普通编辑器和公开部署的素材面板都不写入 Admin Token；素材面板通过 HttpOnly 管理会话登录。
+
+首次生成环境时，初始管理账号与随机密码只写入部署主机的 `deploy/asset-cloud/.admin-credentials`（权限 `0600`，已忽略 Git）。读取并完成首次登录后，按运维流程轮换凭证；仓库和浏览器构建中均不保存默认账号或密码。
 
 生产构建只允许 `https://assets.xiduoduo.top/api/v1`。`https://xiduoduo.top/` 只承载婚庆网站首页，轻设不得在根域名挂载路径服务。内网 HTTP 只用于本地开发，不得进入安装包。Admin Token 只放在 asset-admin 运维环境，不写进普通编辑器构建。源站 IP 只存在于 CDN、防火墙和管理通道配置，不进入客户端环境。
 

@@ -12,13 +12,13 @@
         <div><span class="mark">轻</span><div><strong>轻设浏览器插件</strong><small id="site-label">当前网页</small></div></div>
         <span id="connection-state" class="connection-state">未连接</span>
       </header>
-      <nav class="mode-tabs" aria-label="插件模式">
-        <button id="tab-auto" class="is-active" type="button" aria-pressed="true">全自动</button>
-        <button id="tab-manual" type="button" aria-pressed="false">当前页面</button>
-      </nav>
+      <div class="mode-tabs" aria-label="插件模式" role="tablist">
+        <button id="tab-auto" class="is-active" type="button" role="tab" aria-selected="true" aria-controls="auto-panel">全自动</button>
+        <button id="tab-manual" type="button" role="tab" aria-selected="false" aria-controls="manual-panel" tabindex="-1">当前页面</button>
+      </div>
       <p id="status" class="status" role="status">轻设配套 · 收集 AI 网页图片并送到素材面板。</p>
 
-      <section id="auto-panel" class="auto-panel" aria-labelledby="tab-auto">
+      <section id="auto-panel" class="auto-panel" role="tabpanel" aria-labelledby="tab-auto">
         <div class="form-grid">
           <label>
             <span>生成平台</span>
@@ -34,7 +34,7 @@
         </div>
         <label class="field">
           <span>提示词</span>
-          <textarea id="auto-prompt" rows="4" maxlength="4000" placeholder="例如：婚庆素材" required></textarea>
+          <textarea id="auto-prompt" rows="3" maxlength="4000" placeholder="例如：婚庆素材" required></textarea>
         </label>
         <label class="field">
           <span>素材分类</span>
@@ -57,13 +57,13 @@
         </section>
         <div class="auto-actions">
           <button id="auto-connect" type="button">连接素材面板</button>
-          <button id="auto-start" class="primary" type="button">开始全自动</button>
+          <button id="auto-start" class="primary" type="button" hidden>开始全自动</button>
           <button id="auto-cancel" type="button" hidden>取消运行</button>
           <button id="auto-retry" type="button" hidden>重试失败项</button>
         </div>
       </section>
 
-      <section id="manual-panel" class="manual-panel" hidden aria-labelledby="tab-manual">
+      <section id="manual-panel" class="manual-panel" role="tabpanel" hidden aria-labelledby="tab-manual">
         <div class="manual-heading">
           <span>持续扫描到的图片会显示角标</span>
           <button id="scan" type="button">重新扫描</button>
@@ -80,6 +80,7 @@
         </footer>
       </section>
     </main>
+    <script src="preview-runtime.js"></script>
     <script type="module" src="popup.js"></script>
   </body>
 </html>

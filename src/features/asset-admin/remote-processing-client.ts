@@ -1,5 +1,6 @@
 import ky, { HTTPError } from "ky"
 import { z } from "zod"
+import { assetAdminCloudBaseUrl } from "./asset-admin-config"
 
 const NodeSchema = z.object({
   id: z.string().uuid(),
@@ -80,6 +81,7 @@ const CLOUD_READ_RETRY = {
 export type RemoteProcessingDashboard = z.infer<typeof DashboardSchema>
 export type RemoteProcessingTask = RemoteProcessingDashboard["tasks"][number]
 export type RemoteProcessingNode = RemoteProcessingDashboard["nodes"][number]
+export type ProcessorPlatform = RemoteProcessingNode["platform"]
 
 const PROCESSOR_CLIENT_STORAGE_KEY = "qingshe.processor.panel-client.v1"
 
@@ -91,9 +93,22 @@ export function ensureProcessorPanelClientId(storage: Storage = window.localStor
   return clientId
 }
 
-export function buildProcessorLaunchUrl(clientId: string): string {
+export function buildProcessorLaunchUrl(clientId: string, token: string): string {
   const validated = z.string().uuid().parse(clientId)
-  return `qingshe-processor://open?client_id=${encodeURIComponent(validated)}`
+  const validatedToken = z
+    .string()
+    .min(16)
+    .max(512)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .parse(token)
+  return `qingshe-processor://open?client_id=${encodeURIComponent(validated)}&token=${encodeURIComponent(validatedToken)}`
+}
+
+export function processorPlatformFromUserAgent(userAgent: string): ProcessorPlatform {
+  const normalized = userAgent.toLowerCase()
+  if (normalized.includes("windows")) return "windows"
+  if (normalized.includes("mac os") || normalized.includes("macintosh")) return "macos"
+  return "linux"
 }
 
 export function selectLocalProcessingNode(
@@ -132,7 +147,7 @@ export function parseRemoteProcessingDashboard(value: unknown): RemoteProcessing
 }
 
 function cloudBaseUrl(): string {
-  return import.meta.env.VITE_ASSET_CLOUD_URL?.trim().replace(/\/+$/, "") ?? ""
+  return assetAdminCloudBaseUrl()
 }
 
 function client() {
@@ -181,6 +196,25 @@ export async function pairRemoteExtensionDevice(
   return z
     .object({ id: z.string().uuid(), token: z.string().min(16) })
     .parse(await client().post("admin/extension-devices/pair", { json: { name, platform } }).json())
+}
+
+export async function pairRemoteProcessingNode(
+  clientId: string,
+  userAgent = navigator.userAgent,
+): Promise<{ readonly id: string; readonly token: string }> {
+  const platform = processorPlatformFromUserAgent(userAgent)
+  const platformLabel = platform === "macos" ? "Mac" : platform === "windows" ? "Windows" : "Linux"
+  return z.object({ id: z.string().uuid(), token: z.string().min(16) }).parse(
+    await client()
+      .post("admin/processing-nodes/pair", {
+        json: {
+          name: `此电脑 · ${platformLabel}`,
+          platform,
+          panel_client_id: z.string().uuid().parse(clientId),
+        },
+      })
+      .json(),
+  )
 }
 
 export function extensionPairingRequested(search: string): boolean {

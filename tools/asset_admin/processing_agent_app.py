@@ -13,8 +13,8 @@ from tools.asset_admin.processing_agent import (
     DEFAULT_PROCESSING_URL,
     ProcessorConfiguration,
     default_processor_configuration_path,
-    ensure_processor_configuration,
     run_agent,
+    wait_for_processor_configuration,
 )
 
 STATUS_PRESENTATIONS = {
@@ -188,11 +188,11 @@ class ProcessingAgentApp:
                     base_url=configured_base_url, token=configured_token
                 )
             else:
-                self._emit_status("connecting", "正在启动并上报云端…")
-                configuration = ensure_processor_configuration(
+                configuration = wait_for_processor_configuration(
                     default_processor_configuration_path(),
                     base_url=configured_base_url if configured_base_url else DEFAULT_PROCESSING_URL,
                     status_callback=self._emit_status,
+                    stop_event=self.stop_event,
                 )
             run_agent(
                 configuration.base_url,

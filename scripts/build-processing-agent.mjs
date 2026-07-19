@@ -1,21 +1,16 @@
 import { spawnSync } from "node:child_process"
-import { access, chmod, cp, mkdir, readdir, rm } from "node:fs/promises"
+import { chmod, cp, mkdir, readdir, rm } from "node:fs/promises"
 import { arch, platform } from "node:os"
-import { resolve } from "node:path"
+import { dirname, resolve } from "node:path"
+import process from "node:process"
 
 const root = resolve(".")
 const output = resolve(root, "dist-processing-agent")
 const work = resolve(root, ".processing-agent-build")
 const sidecarDist = resolve(work, "sidecar-dist")
-const localPython = resolve(root, ".processing-node-py312-venv/bin/python")
-let python = process.env.QINGSHE_PROCESSOR_PYTHON || "python3"
+const uv = process.env.QINGSHE_PROCESSOR_UV || "uv"
+const python = process.env.QINGSHE_PROCESSOR_PYTHON || "3.12"
 const distributionArch = arch() === "arm64" ? "aarch64" : "x64"
-try {
-  await access(localPython)
-  python = process.env.QINGSHE_PROCESSOR_PYTHON || localPython
-} catch {
-  // Fall back to the current platform's Python command.
-}
 
 await rm(output, { recursive: true, force: true })
 await rm(work, { recursive: true, force: true })
@@ -23,8 +18,21 @@ await mkdir(output, { recursive: true })
 await mkdir(sidecarDist, { recursive: true })
 
 const builtSidecar = spawnSync(
-  python,
+  uv,
   [
+    "run",
+    "--no-project",
+    "--python",
+    python,
+    "--with",
+    "pyinstaller==6.21.0",
+    "--with",
+    "rembg[cpu]==2.0.75",
+    "--with",
+    "numba==0.62.1",
+    "--with",
+    "pillow==12.1.0",
+    "python",
     "-m",
     "PyInstaller",
     "--noconfirm",
@@ -37,7 +45,7 @@ const builtSidecar = spawnSync(
   ],
   { cwd: root, stdio: "inherit" },
 )
-if (builtSidecar.status !== 0) process.exit(builtSidecar.status ?? 1)
+assertSpawnSucceeded("PyInstaller", builtSidecar)
 
 const targetTriple =
   platform() === "darwin"
@@ -59,9 +67,17 @@ await chmod(bundledSidecar, 0o755)
 const bundleType =
   platform() === "darwin" ? "app,dmg" : platform() === "win32" ? "nsis" : "appimage"
 
+const pnpmRunner =
+  platform() === "win32"
+    ? {
+        command: process.execPath,
+        prefix: [resolve(dirname(process.execPath), "node_modules/corepack/dist/pnpm.js")],
+      }
+    : { command: "pnpm", prefix: [] }
 const tauriBuild = spawnSync(
-  "pnpm",
+  pnpmRunner.command,
   [
+    ...pnpmRunner.prefix,
     "exec",
     "tauri",
     "build",
@@ -83,7 +99,7 @@ const tauriBuild = spawnSync(
     },
   },
 )
-if (tauriBuild.status !== 0) process.exit(tauriBuild.status ?? 1)
+assertSpawnSucceeded("Tauri", tauriBuild)
 
 const bundleRoot = resolve(root, "src-tauri/target/release/bundle")
 if (platform() === "win32") {
@@ -134,4 +150,13 @@ async function findArtifact(directory, extension) {
     }
   }
   throw new Error(`Missing ${extension} processor bundle under ${directory}`)
+}
+
+function assertSpawnSucceeded(label, result) {
+  if (result.error) {
+    throw new Error(`${label} 无法启动：${result.error.message}`)
+  }
+  if (result.status !== 0) {
+    throw new Error(`${label} 构建失败（退出码 ${result.status ?? "unknown"}）`)
+  }
 }

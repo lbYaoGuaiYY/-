@@ -10,7 +10,7 @@
 pnpm extension:build
 ```
 
-Chrome/Edge 打开扩展管理页，开启“开发者模式”，选择“加载已解压的扩展程序”，指向 `browser-extension/dist`。
+Chrome/Edge 打开扩展管理页，开启“开发者模式”，选择“加载已解压的扩展程序”，指向 `browser-extension/dist/chrome`。Firefox 调试版使用 `browser-extension/dist/firefox`，可分发文件分别是根目录下的 Chrome ZIP 与 Firefox XPI。
 
 ## 使用
 

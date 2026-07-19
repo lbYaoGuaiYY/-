@@ -19,6 +19,7 @@ deploy/asset-cloud/.venv/
 .processing-node-venv/
 .processing-node-py312-venv/
 deploy/asset-cloud/.env
+deploy/asset-cloud/.admin-credentials
 **/__pycache__/
 *.py[cod]
 coverage/

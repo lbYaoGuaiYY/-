@@ -87,9 +87,26 @@ async function sendToProviderTab(tabId, message) {
   throw new Error("无法连接生成页面")
 }
 
+async function waitForProviderReady(tabId, provider) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    try {
+      const response = await sendToProviderTab(tabId, {
+        type: "QINGSHE_AUTOMATION_PROVIDER_READY",
+        provider,
+      })
+      if (response?.ok === true && response?.ready !== false) return
+    } catch {
+      // Redirects and client-side route changes can temporarily replace the content script.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  throw new Error("生成页面尚未准备好，请确认已登录并能看到输入框")
+}
+
 async function startAutomationItem(state) {
   const item = globalThis.QingsheAutomationState.activeAutomationItem(state)
   if (!item) return state
+  await waitForProviderReady(state.tabId, state.provider)
   const connection = await readExtensionConnection()
   const client = connectedServerClient(connection)
   await client.updateItem(state.id, item.id, { status: "generating" })
@@ -109,6 +126,19 @@ async function startAutomationItem(state) {
   })
   if (response?.ok === false) throw new Error(response.error || "生成页面拒绝了自动任务")
   return next
+}
+
+async function providerTabHasActiveItem(tabId, state, item) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: "QINGSHE_AUTOMATION_QUERY_ITEM",
+      runId: state.id,
+      itemId: item.id,
+    })
+    return response?.active === true
+  } catch {
+    return false
+  }
 }
 
 async function startAutomation(config) {
@@ -142,13 +172,47 @@ async function startAutomation(config) {
 async function cancelAutomation() {
   const state = await readStoredValue(AUTOMATION_STORAGE_KEY)
   if (!state?.id) throw new Error("当前没有全自动任务")
+  const active = state.items?.find((item) =>
+    ["queued", "generating", "uploading"].includes(item.status),
+  )
+  if (typeof state.tabId === "number" && active?.id) {
+    try {
+      await chrome.tabs.sendMessage(state.tabId, {
+        type: "QINGSHE_AUTOMATION_CANCEL_ITEM",
+        runId: state.id,
+        itemId: active.id,
+      })
+    } catch {
+      // The server cancellation remains authoritative if the provider tab already closed.
+    }
+  }
   const connection = await readExtensionConnection()
+  const pending = await saveAutomationState({
+    ...state,
+    status: "cancelling",
+    currentOrdinal: null,
+    cancelPending: true,
+    error: null,
+  })
+  try {
+    return await finalizePendingCancellation(pending, connection)
+  } catch {
+    return saveAutomationState({
+      ...pending,
+      error: "已停止生成；服务器恢复后会自动完成取消",
+    })
+  }
+}
+
+async function finalizePendingCancellation(state, connection) {
+  if (!state?.id || state.cancelPending !== true) return state
   const run = await connectedServerClient(connection).cancelRun(state.id)
   return saveAutomationState({
     ...state,
     ...run,
     tabId: state.tabId,
     currentOrdinal: null,
+    cancelPending: false,
     error: null,
   })
 }
@@ -200,6 +264,26 @@ async function resumeAutomation() {
       error: null,
     })
     await waitForProviderTab(tabId)
+    if (
+      ["generating", "uploading"].includes(active.status) &&
+      (await providerTabHasActiveItem(tabId, resumed, active))
+    ) {
+      return resumed
+    }
+    if (active.status === "uploading") {
+      const detail = "图片上传被浏览器中断，请在插件中重试这一项"
+      await connectedServerClient(connection).updateItem(serverRun.id, active.id, {
+        status: "failed",
+        error: detail,
+      })
+      return saveAutomationState(
+        globalThis.QingsheAutomationState.nextAutomationState(resumed, {
+          type: "ITEM_FAILED",
+          itemId: active.id,
+          error: detail,
+        }),
+      )
+    }
     return startAutomationItem(resumed)
   } catch {
     return null
@@ -276,32 +360,51 @@ async function heartbeatExtension() {
   try {
     const connection = await readExtensionConnection()
     await connectedServerClient(connection).heartbeat()
+    const state = await readStoredValue(AUTOMATION_STORAGE_KEY)
+    if (state?.cancelPending) await finalizePendingCancellation(state, connection)
   } catch {
     // Pairing and transient network errors are shown in the popup state.
   }
 }
 
 async function automationStatus() {
-  const connection = await readStoredValue(CONNECTION_STORAGE_KEY)
+  let connection = await readStoredValue(CONNECTION_STORAGE_KEY)
+  let connectionStatus = connection ? "offline" : "unpaired"
   let state = await readStoredValue(AUTOMATION_STORAGE_KEY)
-  if (connection && state?.id) {
+  if (connection) {
     try {
-      const serverRun = await connectedServerClient(connection).readRun(state.id)
-      const active = serverRun.items?.find((item) =>
-        ["queued", "generating", "uploading"].includes(item.status),
-      )
-      state = {
-        ...state,
-        ...serverRun,
-        tabId: state.tabId,
-        currentOrdinal: active?.ordinal ?? null,
+      const client = connectedServerClient(connection)
+      await client.heartbeat()
+      connectionStatus = "online"
+      if (state?.cancelPending) {
+        try {
+          state = await finalizePendingCancellation(state, connection)
+        } catch {
+          // Keep the locally cancelled state until the next heartbeat.
+        }
+      } else if (state?.id) {
+        const serverRun = await client.readRun(state.id)
+        const active = serverRun.items?.find((item) =>
+          ["queued", "generating", "uploading"].includes(item.status),
+        )
+        state = {
+          ...state,
+          ...serverRun,
+          tabId: state.tabId,
+          currentOrdinal: active?.ordinal ?? null,
+        }
+        await saveAutomationState(state)
       }
-      await saveAutomationState(state)
-    } catch {
-      // Keep the last durable local state while the server is temporarily unavailable.
+    } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        connection = null
+        connectionStatus = "unpaired"
+        await chrome.storage.local.set({ [CONNECTION_STORAGE_KEY]: null })
+      }
+      // Keep the last durable run while the server is temporarily unavailable.
     }
   }
-  return { paired: Boolean(connection), state }
+  return { paired: Boolean(connection), connectionStatus, state }
 }
 
 if (typeof chrome.alarms?.onAlarm?.addListener === "function") {
@@ -450,11 +553,28 @@ async function persistDiscoveries(message, sender) {
   }
 }
 
+if (typeof chrome.tabs?.onRemoved?.addListener === "function") {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void chrome.storage.local.get(DISCOVERY_STORAGE_KEY).then(async (stored) => {
+      const tabs = stored[DISCOVERY_STORAGE_KEY] ?? {}
+      if (!(tabId in tabs)) return
+      delete tabs[tabId]
+      await chrome.storage.local.set({ [DISCOVERY_STORAGE_KEY]: tabs })
+    })
+  })
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "QINGSHE_AUTOMATION_STATUS") {
     void automationStatus().then(
       (result) => sendResponse({ ok: true, ...result }),
-      () => sendResponse({ ok: false, paired: false, state: null }),
+      () =>
+        sendResponse({
+          ok: false,
+          paired: false,
+          connectionStatus: "unpaired",
+          state: null,
+        }),
     )
     return true
   }

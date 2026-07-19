@@ -2,8 +2,16 @@ import { zipSync } from "./fflate.js"
 import { scanTabWithRetry } from "./scan-active-tab.js"
 import { siteForHost } from "./site-adapters.js"
 
-const state = { images: [], selected: new Set(), tab: null, automation: null, paired: false }
+const state = {
+  images: [],
+  selected: new Set(),
+  tab: null,
+  automation: null,
+  paired: false,
+  connectionStatus: "unpaired",
+}
 const $ = (id) => document.getElementById(id)
+let pendingManualAction = false
 
 function setStatus(text, error = false) {
   $("status").textContent = text
@@ -16,9 +24,20 @@ function setMode(mode) {
   $("manual-panel").hidden = automatic
   $("tab-auto").classList.toggle("is-active", automatic)
   $("tab-manual").classList.toggle("is-active", !automatic)
-  $("tab-auto").setAttribute("aria-pressed", String(automatic))
-  $("tab-manual").setAttribute("aria-pressed", String(!automatic))
+  $("tab-auto").setAttribute("aria-selected", String(automatic))
+  $("tab-manual").setAttribute("aria-selected", String(!automatic))
+  $("tab-auto").tabIndex = automatic ? 0 : -1
+  $("tab-manual").tabIndex = automatic ? -1 : 0
   if (!automatic) void scan()
+}
+
+function handleModeTabKeydown(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
+  event.preventDefault()
+  const automatic = event.key === "ArrowLeft" || event.key === "Home"
+  const target = automatic ? $("tab-auto") : $("tab-manual")
+  setMode(automatic ? "auto" : "manual")
+  target.focus()
 }
 
 function automationCounts(run) {
@@ -34,17 +53,29 @@ function automationCounts(run) {
 function renderAutomation() {
   const run = state.automation
   const counts = automationCounts(run)
-  $("connection-state").textContent = state.paired ? "服务器已连接" : "未连接"
-  $("connection-state").classList.toggle("is-online", state.paired)
+  const online = state.paired && state.connectionStatus === "online"
+  const running = ["running", "queued"].includes(run?.status)
+  const cancelling = run?.cancelPending === true || run?.status === "cancelling"
+  const failed = run?.status === "failed"
+  $("connection-state").textContent = online
+    ? "服务器已连接"
+    : state.paired
+      ? "服务器暂时离线"
+      : "未连接"
+  $("connection-state").classList.toggle("is-online", online)
+  $("connection-state").classList.toggle("is-offline", state.paired && !online)
   $("auto-connect").hidden = state.paired
-  $("auto-start").disabled = !state.paired || ["running", "queued"].includes(run?.status)
-  $("auto-cancel").hidden = !["running", "queued"].includes(run?.status)
-  $("auto-retry").hidden = run?.status !== "failed"
+  $("auto-start").hidden = !state.paired || running || cancelling || failed
+  $("auto-start").disabled = !online
+  $("auto-cancel").hidden = !running
+  $("auto-retry").hidden = !failed
   if (!run) {
     $("auto-progress-count").textContent = "尚未开始"
-    $("auto-progress-detail").textContent = state.paired
+    $("auto-progress-detail").textContent = online
       ? "开始后可以关闭此弹窗"
-      : "首次使用需在素材面板确认连接"
+      : state.paired
+        ? "服务器不可达，恢复后会自动重连"
+        : "首次使用需在素材面板确认连接"
     $("auto-progress-bar").style.width = "0%"
     return
   }
@@ -53,8 +84,9 @@ function renderAutomation() {
   const active = run.items?.find((item) =>
     ["generating", "uploading", "processing", "queued"].includes(item.status),
   )
-  $("auto-progress-detail").textContent =
-    run.status === "completed"
+  $("auto-progress-detail").textContent = cancelling
+    ? run.error || "已停止生成，正在同步取消状态"
+    : run.status === "completed"
       ? "全部完成，成品已进入轻设 App"
       : run.status === "failed"
         ? run.error || `有 ${counts.failed} 项失败`
@@ -69,6 +101,7 @@ async function refreshAutomationStatus() {
   const result = await chrome.runtime.sendMessage({ type: "QINGSHE_AUTOMATION_STATUS" })
   if (!result?.ok) return
   state.paired = Boolean(result.paired)
+  state.connectionStatus = result.connectionStatus || (state.paired ? "offline" : "unpaired")
   state.automation = result.state ?? null
   renderAutomation()
 }
@@ -100,6 +133,7 @@ async function automationAction(type, pendingText) {
   if (!result?.ok) throw new Error(result?.error || "全自动任务操作失败")
   state.automation = result.state ?? null
   renderAutomation()
+  return state.automation
 }
 
 function selectedImages() {
@@ -134,11 +168,22 @@ function render() {
   }
   const count = selectedImages().length
   $("count").textContent = `${state.images.length} 张图片 · 已选 ${count} 张`
-  for (const id of ["download", "zip", "send"]) $(id).disabled = count === 0
+  for (const id of ["download", "zip", "send"]) {
+    $(id).disabled = count === 0 || pendingManualAction
+  }
+  $("select-all").disabled = pendingManualAction || state.images.length === 0
   $("select-all").checked = state.images.length > 0 && count === state.images.length
 }
 
 async function activeTab() {
+  const requestedTabId = Number(new URL(location.href).searchParams.get("tab"))
+  if (Number.isInteger(requestedTabId) && requestedTabId > 0) {
+    try {
+      return await chrome.tabs.get(requestedTabId)
+    } catch {
+      // Fall through to the active browser tab when a stale test/debug URL is reused.
+    }
+  }
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
   return tabs[0] ?? null
 }
@@ -165,14 +210,25 @@ async function scan() {
 }
 
 async function downloadSelected() {
-  for (const image of selectedImages()) {
-    await chrome.runtime.sendMessage({
-      type: "QINGSHE_DOWNLOAD_ONE",
-      url: image.source,
-      filename: image.filename,
-    })
+  const images = selectedImages()
+  if (images.length === 0 || pendingManualAction) return
+  pendingManualAction = true
+  render()
+  setStatus(`正在提交 ${images.length} 张图片下载…`)
+  try {
+    for (const image of images) {
+      const result = await chrome.runtime.sendMessage({
+        type: "QINGSHE_DOWNLOAD_ONE",
+        url: image.source,
+        filename: image.filename,
+      })
+      if (!result?.ok) throw new Error(`下载失败：${image.filename}`)
+    }
+    setStatus(`已提交 ${images.length} 张图片下载`)
+  } finally {
+    pendingManualAction = false
+    render()
   }
-  setStatus(`已提交 ${selectedImages().length} 张图片下载`)
 }
 
 async function fetchImage(image) {
@@ -185,29 +241,58 @@ async function fetchImage(image) {
 }
 
 async function zipSelected() {
+  if (pendingManualAction) return
+  const images = selectedImages()
+  pendingManualAction = true
+  render()
   const files = {}
   let index = 0
-  for (const image of selectedImages()) {
-    const result = await fetchImage(image)
-    files[image.filename || `ai-image-${++index}.png`] = result.bytes
+  try {
+    for (const image of images) {
+      const result = await fetchImage(image)
+      const requestedName = image.filename || `ai-image-${++index}.png`
+      let filename = requestedName
+      let suffix = 2
+      while (filename in files) {
+        const dot = requestedName.lastIndexOf(".")
+        const stem = dot > 0 ? requestedName.slice(0, dot) : requestedName
+        const extension = dot > 0 ? requestedName.slice(dot) : ""
+        filename = `${stem}-${suffix}${extension}`
+        suffix += 1
+      }
+      files[filename] = result.bytes
+    }
+    const blob = new Blob([zipSync(files)], { type: "application/zip" })
+    const href = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = href
+    anchor.download = `轻设图片-${Date.now()}.zip`
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(href), 10_000)
+    setStatus(`已打包 ${Object.keys(files).length} 张图片`)
+  } finally {
+    pendingManualAction = false
+    render()
   }
-  const blob = new Blob([zipSync(files)], { type: "application/zip" })
-  const href = URL.createObjectURL(blob)
-  const anchor = document.createElement("a")
-  anchor.href = href
-  anchor.download = `轻设图片-${Date.now()}.zip`
-  anchor.click()
-  setTimeout(() => URL.revokeObjectURL(href), 10_000)
-  setStatus(`已打包 ${Object.keys(files).length} 张图片`)
 }
 
 async function sendToPanel() {
-  const result = await chrome.runtime.sendMessage({
-    type: "QINGSHE_SEND_TO_PANEL",
-    images: selectedImages(),
-  })
-  if (!result?.ok) throw new Error(result?.error || "发送失败")
-  setStatus(`已发送 ${selectedImages().length} 张，素材面板将按透明 PNG 入库`)
+  if (pendingManualAction) return
+  const images = selectedImages()
+  pendingManualAction = true
+  render()
+  setStatus(`正在发送 ${images.length} 张图片…`)
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: "QINGSHE_SEND_TO_PANEL",
+      images,
+    })
+    if (!result?.ok) throw new Error(result?.error || "发送失败")
+    setStatus(`已发送 ${images.length} 张，请在素材面板确认后抠图入库`)
+  } finally {
+    pendingManualAction = false
+    render()
+  }
 }
 
 void activeTab().then((tab) => {
@@ -215,6 +300,8 @@ void activeTab().then((tab) => {
 })
 $("tab-auto").addEventListener("click", () => setMode("auto"))
 $("tab-manual").addEventListener("click", () => setMode("manual"))
+$("tab-auto").addEventListener("keydown", handleModeTabKeydown)
+$("tab-manual").addEventListener("keydown", handleModeTabKeydown)
 $("auto-connect").addEventListener("click", () => {
   void chrome.runtime
     .sendMessage({ type: "QINGSHE_PAIR_EXTENSION" })
@@ -232,7 +319,7 @@ $("auto-cancel").addEventListener(
   "click",
   () =>
     void automationAction("QINGSHE_AUTOMATION_CANCEL", "正在取消…")
-      .then(() => setStatus("任务已取消"))
+      .then((run) => setStatus(run?.cancelPending ? "已停止生成，联网后完成取消" : "任务已取消"))
       .catch((error) => setStatus(error.message, true)),
 )
 $("auto-retry").addEventListener(
@@ -247,7 +334,10 @@ $("select-all").addEventListener("change", (event) => {
   state.selected = event.target.checked ? new Set(state.images.map((image) => image.id)) : new Set()
   render()
 })
-$("download").addEventListener("click", () => void downloadSelected())
+$("download").addEventListener(
+  "click",
+  () => void downloadSelected().catch((error) => setStatus(error.message, true)),
+)
 $("zip").addEventListener(
   "click",
   () => void zipSelected().catch((error) => setStatus(error.message, true)),

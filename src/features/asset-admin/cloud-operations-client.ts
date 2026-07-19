@@ -1,5 +1,6 @@
 import ky from "ky"
 import { z } from "zod"
+import { assetAdminCloudBaseUrl } from "./asset-admin-config"
 
 const CLOUD_READ_RETRY = {
   limit: 2,
@@ -135,7 +136,7 @@ export function formatCloudBytes(value: number): string {
 }
 
 function createCloudAdminClient() {
-  const baseUrl = import.meta.env.VITE_ASSET_CLOUD_URL?.trim().replace(/\/+$/, "") ?? ""
+  const baseUrl = assetAdminCloudBaseUrl()
   const adminToken = import.meta.env.VITE_ASSET_CLOUD_ADMIN_TOKEN?.trim() ?? ""
   if (baseUrl === "") throw new Error("云端素材地址尚未配置")
   return ky.create({

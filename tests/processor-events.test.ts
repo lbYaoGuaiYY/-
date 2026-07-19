@@ -32,5 +32,10 @@ describe("processor desktop event protocol", () => {
   it("packages the processor desktop UI on every supported desktop platform", () => {
     expect(processorBuildScriptText).toContain('platform() === "win32" ? "nsis" : "appimage"')
     expect(processorBuildScriptText).not.toContain('if (platform() !== "darwin")')
+    expect(processorBuildScriptText).toContain('"pyinstaller==6.21.0"')
+    expect(processorBuildScriptText).toContain('"rembg[cpu]==2.0.75"')
+    expect(processorBuildScriptText).toContain('"--no-project"')
+    expect(processorBuildScriptText).toContain('"node_modules/corepack/dist/pnpm.js"')
+    expect(processorBuildScriptText).toContain("assertSpawnSucceeded")
   })
 })
