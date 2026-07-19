@@ -72,26 +72,47 @@ class RemoteProcessingStore:
                 "WHERE status='processing'"
             )
 
+    def close(self) -> None:
+        with self._lock:
+            self._connection.close()
+
     @staticmethod
     def _hash_token(token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    def register_node(self, name: str, platform: str) -> dict[str, str]:
-        """Self-register an outbound cutout node without admin pairing."""
-        return self.pair_node(name, platform)
-
-    def pair_node(self, name: str, platform: str) -> dict[str, str]:
+    def pair_node(
+        self, name: str, platform: str, panel_client_id: str | None = None
+    ) -> dict[str, str]:
         token = secrets.token_urlsafe(32)
         node_id = str(uuid.uuid4())
         timestamp = now_iso()
+        normalized_client_id = (
+            None if panel_client_id is None else str(uuid.UUID(panel_client_id))
+        )
         with self._lock, self._connection:
+            if normalized_client_id is None:
+                self._connection.execute(
+                    "DELETE FROM processing_nodes WHERE name=? AND platform=?", (name, platform)
+                )
+            else:
+                self._connection.execute(
+                    "DELETE FROM processing_nodes WHERE panel_client_id=?",
+                    (normalized_client_id,),
+                )
             self._connection.execute(
-                "DELETE FROM processing_nodes WHERE name=? AND platform=?", (name, platform)
-            )
-            self._connection.execute(
-                "INSERT INTO processing_nodes(id,token_hash,name,platform,status,last_seen,created_at) "
-                "VALUES(?,?,?,?,?,?,?)",
-                (node_id, self._hash_token(token), name, platform, "online", timestamp, timestamp),
+                "INSERT INTO processing_nodes("
+                "id,token_hash,name,platform,status,last_seen,created_at,panel_client_id"
+                ") VALUES(?,?,?,?,?,?,?,?)",
+                (
+                    node_id,
+                    self._hash_token(token),
+                    name,
+                    platform,
+                    "online",
+                    timestamp,
+                    timestamp,
+                    normalized_client_id,
+                ),
             )
         return {"id": node_id, "token": token, "name": name, "platform": platform}
 

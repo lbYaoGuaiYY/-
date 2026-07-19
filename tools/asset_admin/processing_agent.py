@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11,<3.14"
 # dependencies = [
+#   "numba==0.62.1",
 #   "pillow==12.1.0",
 #   "rembg[cpu]==2.0.75",
 # ]
@@ -126,52 +127,40 @@ def processor_panel_headers() -> dict[str, str]:
     return {} if client_id is None else {"X-Qingshe-Panel-Client": client_id}
 
 
-def register_processor_node(
-    base_url: str = DEFAULT_PROCESSING_URL,
-    *,
-    name: str | None = None,
-    platform_name: str | None = None,
-) -> ProcessorConfiguration:
-    """Register this machine with the cloud and return a durable node token."""
-    payload = json.dumps(
-        {
-            "name": (name or platform.node() or "轻抠").strip() or "轻抠",
-            "platform": platform_name or processor_platform_name(),
-        }
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/processing-nodes/register",
-        data=payload,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "QingsheProcessingNode/1.0",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-        body = json.loads(response.read())
-    token = str(body["token"])
-    if token == "":
-        raise RuntimeError("云端未返回有效节点凭证")
-    return ProcessorConfiguration(base_url=base_url.rstrip("/"), token=token)
-
-
 def ensure_processor_configuration(
     path: Path,
     *,
     base_url: str = DEFAULT_PROCESSING_URL,
     status_callback: Callable[[str, str], None] | None = None,
 ) -> ProcessorConfiguration:
-    """Load an existing node token or auto-register a new one."""
+    """Load a node token that was securely paired by the authenticated panel."""
     report = status_callback or (lambda _state, _detail: None)
     configuration = load_processor_configuration(path)
     if configuration is not None:
         return configuration
-    report("connecting", "正在向云端上报这台轻抠…")
-    configuration = register_processor_node(base_url)
-    save_processor_configuration(path, configuration)
-    LOGGER.info("本地抠图节点已自动注册到云端")
-    return configuration
+    report("pairing", "请从素材面板点击“检测并启动”完成安全连接")
+    raise RuntimeError("轻抠尚未通过素材面板安全连接")
+
+
+def wait_for_processor_configuration(
+    path: Path,
+    *,
+    base_url: str = DEFAULT_PROCESSING_URL,
+    status_callback: Callable[[str, str], None] | None = None,
+    stop_event: Event | None = None,
+) -> ProcessorConfiguration:
+    """Wait for a deep-link pairing while keeping the desktop companion alive."""
+    report = status_callback or (lambda _state, _detail: None)
+    stopped = stop_event or Event()
+    configuration = load_processor_configuration(path)
+    if configuration is not None:
+        return configuration
+    report("pairing", "请从素材面板点击“检测并启动”完成安全连接")
+    while not stopped.wait(1):
+        configuration = load_processor_configuration(path)
+        if configuration is not None:
+            return configuration
+    raise RuntimeError("轻抠已停止")
 
 
 def render_result(
@@ -211,7 +200,7 @@ def dominant_color(image: Image.Image) -> str:
     sample = image.copy()
     sample.thumbnail((64, 64))
     colors: dict[tuple[int, int, int], int] = {}
-    for red, green, blue, alpha in sample.convert("RGBA").getdata():
+    for red, green, blue, alpha in sample.convert("RGBA").get_flattened_data():
         if alpha > 32:
             colors[(red, green, blue)] = colors.get((red, green, blue), 0) + 1
     if not colors:
@@ -401,7 +390,7 @@ def main() -> None:
             base_url=configured_base_url, token=configured_token
         )
     else:
-        configuration = ensure_processor_configuration(
+        configuration = wait_for_processor_configuration(
             default_processor_configuration_path(),
             base_url=configured_base_url if configured_base_url else DEFAULT_PROCESSING_URL,
         )

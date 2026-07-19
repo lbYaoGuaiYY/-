@@ -1,0 +1,66 @@
+{
+  "status": "passed",
+  "browser": "Playwright bundled Chromium",
+  "extensionId": "npihccnndcpbkchaomdncbgghccffflj",
+  "manifestVersion": 3,
+  "serviceWorkerUrl": "chrome-extension://npihccnndcpbkchaomdncbgghccffflj/service-worker.js",
+  "manual": {
+    "axeSeriousOrCritical": 0,
+    "bridgedFiles": [
+      {
+        "name": "01-酒红秋日花艺.png",
+        "bytes": 1871154
+      },
+      {
+        "name": "02-婚礼桌花素材.png",
+        "bytes": 1871172
+      }
+    ],
+    "browserDownloads": [
+      {
+        "bytes": 1403349,
+        "state": "complete"
+      },
+      {
+        "bytes": 1403349,
+        "state": "complete"
+      }
+    ],
+    "requestedNames": ["01-酒红秋日花艺.png", "02-婚礼桌花素材.png"],
+    "screenshot": "D:\\轻设\\docs\\audits\\2026-07-17-final-product\\15-extension-mv3-manual.png",
+    "zipEntries": ["01-酒红秋日花艺.png", "02-婚礼桌花素材.png"]
+  },
+  "automatic": {
+    "chatgpt": {
+      "axeSeriousOrCritical": 0,
+      "promptSubmissions": 1,
+      "runId": "extension-e2e-run-1",
+      "screenshot": null,
+      "uploads": 1
+    },
+    "gemini": {
+      "axeSeriousOrCritical": 0,
+      "promptSubmissions": 1,
+      "runId": "extension-e2e-run-2",
+      "screenshot": "D:\\轻设\\docs\\audits\\2026-07-17-final-product\\16-extension-mv3-auto-complete.png",
+      "uploads": 1
+    }
+  },
+  "serviceWorkerRestart": {
+    "promptSubmissions": 1,
+    "runId": "extension-e2e-run-3",
+    "uploads": 1
+  },
+  "cancellation": {
+    "cancelApiCalls": 1,
+    "runId": "extension-e2e-run-4",
+    "uploadsAfterCancel": 0
+  },
+  "api": {
+    "cancellations": 1,
+    "heartbeats": 66,
+    "itemUpdates": 7,
+    "runs": 4,
+    "uploads": 3
+  }
+}

@@ -5,9 +5,10 @@ test("renders the modern local processor window without legacy Tk controls", asy
 
   await expect(page.getByRole("heading", { name: "轻抠" })).toBeVisible()
   await expect(page.getByText("保持运行，自动完成素材抠图")).toBeVisible()
-  await expect(page.getByRole("button", { name: "打开素材面板" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "最小化" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "退出抠图器" })).toBeVisible()
+  await expect(page.getByRole("status")).toHaveText("网页预览：安装版会连接本地处理服务")
+  await expect(page.getByRole("button", { name: "打开素材面板" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "最小化" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "退出抠图器" })).toBeDisabled()
 
   const visualRules = await page.locator(".processor-shell").evaluate((element) => {
     const shell = getComputedStyle(element)

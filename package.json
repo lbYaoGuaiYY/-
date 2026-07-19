@@ -29,6 +29,8 @@
     "processor:dev": "tauri dev --config src-tauri/tauri.processor.conf.json --features processor",
     "processor:build": "node scripts/build-processing-agent.mjs",
     "extension:build": "node scripts/build-browser-extension.mjs",
+    "extension:verify:built": "node scripts/verify-browser-extension.mjs",
+    "extension:verify": "pnpm extension:build && pnpm extension:verify:built",
     "boundaries:check": "node scripts/check-product-boundaries.mjs",
     "build:all": "pnpm app:build && pnpm asset-panel:build && pnpm processor:web:build && pnpm boundaries:check --artifacts",
     "dev": "pnpm app:dev",
@@ -40,10 +42,11 @@
     "check:fix": "biome check --write .",
     "check:endpoints": "node scripts/check-production-endpoints.mjs",
     "licenses:check": "pnpm licenses list --prod --json | node scripts/check-production-licenses.mjs",
+    "pipeline:verify": "pnpm extension:build && node scripts/run-full-pipeline-verification.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "verify": "pnpm boundaries:check && pnpm typecheck && pnpm test && pnpm check && pnpm build:all && pnpm test:e2e"
+    "verify": "pnpm boundaries:check && pnpm typecheck && pnpm test && pnpm check && pnpm build:all && pnpm check:endpoints && pnpm extension:verify:built && pnpm test:e2e"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",

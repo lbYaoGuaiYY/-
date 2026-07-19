@@ -29,7 +29,7 @@ def test_processing_dashboard_orders_active_nodes_before_stale_records(tmp_path:
     assert nodes[1]["status"] == "offline"
 
 
-def test_processing_node_can_self_register_without_admin_token(tmp_path: Path) -> None:
+def test_processing_node_requires_authenticated_panel_pairing(tmp_path: Path) -> None:
     settings = CloudSettings(
         library_root=tmp_path,
         editor_token="editor-secret",
@@ -38,12 +38,23 @@ def test_processing_node_can_self_register_without_admin_token(tmp_path: Path) -
     )
     client = TestClient(create_app(settings))
 
-    registered = client.post(
+    rejected = client.post(
         "/api/v1/processing-nodes/register",
         json={"name": "这台 Mac", "platform": "macos"},
     )
-    assert registered.status_code == 201, registered.text
-    node = registered.json()
+    assert rejected.status_code == 404
+
+    paired = client.post(
+        "/api/v1/admin/processing-nodes/pair",
+        headers={"Authorization": "Bearer admin-secret"},
+        json={
+            "name": "这台 Mac",
+            "platform": "macos",
+            "panel_client_id": "22222222-2222-4222-8222-222222222222",
+        },
+    )
+    assert paired.status_code == 201, paired.text
+    node = paired.json()
     node_headers = {"Authorization": f"Bearer {node['token']}"}
 
     claim = client.post("/api/v1/processing-nodes/poll", headers=node_headers)
@@ -57,6 +68,7 @@ def test_processing_node_can_self_register_without_admin_token(tmp_path: Path) -
     assert dashboard.status_code == 200, dashboard.text
     assert dashboard.json()["nodes"][0]["name"] == "这台 Mac"
     assert dashboard.json()["nodes"][0]["status"] == "online"
+    assert dashboard.json()["nodes"][0]["client_id"] == "22222222-2222-4222-8222-222222222222"
 
 
 def test_processing_node_heartbeat_refreshes_liveness_without_claiming_task(tmp_path: Path) -> None:
@@ -69,12 +81,13 @@ def test_processing_node_heartbeat_refreshes_liveness_without_claiming_task(tmp_
     client = TestClient(create_app(settings))
     administrator = {"Authorization": "Bearer admin-secret"}
 
-    registered = client.post(
-        "/api/v1/processing-nodes/register",
+    paired = client.post(
+        "/api/v1/admin/processing-nodes/pair",
+        headers=administrator,
         json={"name": "这台 Mac", "platform": "macos"},
     )
-    assert registered.status_code == 201, registered.text
-    node_headers = {"Authorization": f"Bearer {registered.json()['token']}"}
+    assert paired.status_code == 201, paired.text
+    node_headers = {"Authorization": f"Bearer {paired.json()['token']}"}
     task = client.post(
         "/api/v1/admin/processing-tasks",
         headers=administrator,
@@ -726,6 +739,10 @@ def test_factory_loads_environment_settings(tmp_path: Path, monkeypatch) -> None
     assert settings.editor_token == "editor-from-env"
     assert settings.admin_token == "admin-from-env"
     assert settings.allowed_origins == ("http://localhost:4173", "http://tauri.localhost")
+    assert settings.admin_username == ""
+    assert settings.admin_password_salt == ""
+    assert settings.admin_password_hash == ""
+    assert settings.admin_session_secret == ""
 
 
 def test_editor_token_cannot_modify_catalog(tmp_path: Path) -> None:

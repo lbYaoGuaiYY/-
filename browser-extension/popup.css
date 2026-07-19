@@ -58,8 +58,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   min-height: 560px;
-  padding: 16px;
-  gap: 12px;
+  padding: 14px;
+  gap: 10px;
 }
 .popup-header {
   display: flex;
@@ -102,6 +102,9 @@ small {
 .connection-state.is-online {
   color: #45c98a;
 }
+.connection-state.is-offline {
+  color: #ed6b72;
+}
 .mode-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -131,7 +134,11 @@ small {
 .manual-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+}
+.auto-panel[hidden],
+.manual-panel[hidden] {
+  display: none;
 }
 .form-grid {
   display: grid;
@@ -156,14 +163,14 @@ textarea {
   padding: 7px 9px;
 }
 textarea {
-  min-height: 88px;
+  min-height: 72px;
   resize: vertical;
   line-height: 20px;
 }
 .auto-progress {
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px;
   border: 1px solid #3c3c3c;
   border-radius: 4px;
   background: #252525;
@@ -190,10 +197,10 @@ textarea {
 }
 .auto-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
-.auto-actions .primary {
+.auto-actions button {
   grid-column: 1 / -1;
 }
 .manual-heading {
@@ -217,6 +224,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 .image-list {
   display: grid;

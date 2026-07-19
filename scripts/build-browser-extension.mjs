@@ -6,11 +6,23 @@ const root = resolve("browser-extension")
 const source = resolve(root, "src")
 const output = resolve(root, "dist")
 const version = "0.2.0"
-const sharedFiles = ["popup.js", "popup.html", "popup.css"]
+const sharedFiles = ["popup.js", "popup.css"]
 
 async function copyShared(target) {
-  await cp(source, target, { recursive: true })
+  await cp(source, target, {
+    recursive: true,
+    filter: (sourcePath) => !sourcePath.endsWith(".d.ts"),
+  })
   for (const file of sharedFiles) await cp(resolve(root, file), resolve(target, file))
+  const popupHtml = await readFile(resolve(root, "popup.html"), "utf8")
+  const productionPopupHtml = popupHtml.replace(
+    /^\s*<script src="preview-runtime\.js"><\/script>\s*$/m,
+    "",
+  )
+  if (productionPopupHtml === popupHtml) {
+    throw new Error("Production extension build could not remove the preview runtime")
+  }
+  await writeFile(resolve(target, "popup.html"), productionPopupHtml)
   await cp(resolve("node_modules/fflate/esm/browser.js"), resolve(target, "fflate.js"))
 }
 

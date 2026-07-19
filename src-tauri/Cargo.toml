@@ -17,6 +17,7 @@ crate-type = ["staticlib", "rlib"]
 default = []
 processor = [
   "dep:tauri-plugin-deep-link",
+  "dep:tauri-plugin-opener",
   "dep:tauri-plugin-shell",
   "dep:tauri-plugin-single-instance",
   "tauri/tray-icon",
@@ -29,6 +30,7 @@ tauri-build = { version = "2.6.3", features = [] }
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
+tauri-plugin-opener = { version = "2.5.4", optional = true }
 tauri-plugin-shell = { version = "2.3.5", optional = true }
 tauri-plugin-deep-link = { version = "2.4.9", optional = true }
 tauri-plugin-single-instance = { version = "2.4.3", features = ["deep-link"], optional = true }

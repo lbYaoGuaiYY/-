@@ -4,9 +4,11 @@ import json
 import os
 import time
 import base64
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Path as PathParameter, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,9 +25,6 @@ from tools.asset_admin.observability import ObservabilityStore, RequestRecord
 from tools.asset_admin.remote_processing import RemoteProcessingStore
 
 MAX_INPUT_BYTES = 25 * 1024 * 1024
-DEFAULT_ADMIN_USERNAME = "lbYaoGuai"
-DEFAULT_ADMIN_PASSWORD_SALT = "33GXQfzVUDH_Gxvbr5FxAA=="
-DEFAULT_ADMIN_PASSWORD_HASH = "kghDb6NgnaYRCQqfd8SKEeGNbOLhogs8RHy3RC_odIc="
 ORIGINAL_EXTENSIONS = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -147,6 +146,7 @@ class NodePairRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     platform: Literal["macos", "windows", "linux"]
+    panel_client_id: UUID | None = None
 
 
 class ExtensionDevicePairRequest(BaseModel):
@@ -214,10 +214,10 @@ def load_settings() -> CloudSettings:
         editor_token=editor_token,
         admin_token=admin_token,
         allowed_origins=origins,
-        admin_username=os.environ.get("QINGSHE_ADMIN_USERNAME") or DEFAULT_ADMIN_USERNAME,
-        admin_password_salt=os.environ.get("QINGSHE_ADMIN_PASSWORD_SALT") or DEFAULT_ADMIN_PASSWORD_SALT,
-        admin_password_hash=os.environ.get("QINGSHE_ADMIN_PASSWORD_HASH") or DEFAULT_ADMIN_PASSWORD_HASH,
-        admin_session_secret=os.environ.get("QINGSHE_ADMIN_SESSION_SECRET") or admin_token,
+        admin_username=os.environ.get("QINGSHE_ADMIN_USERNAME", ""),
+        admin_password_salt=os.environ.get("QINGSHE_ADMIN_PASSWORD_SALT", ""),
+        admin_password_hash=os.environ.get("QINGSHE_ADMIN_PASSWORD_HASH", ""),
+        admin_session_secret=os.environ.get("QINGSHE_ADMIN_SESSION_SECRET", ""),
     )
 
 
@@ -288,7 +288,17 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     processing = RemoteProcessingStore(active_settings.library_root)
     automation = ExtensionAutomationStore(active_settings.library_root)
     bearer = HTTPBearer(auto_error=False)
-    app = FastAPI(title="轻设云端素材库", version="1.0.0")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            automation.close()
+            processing.close()
+            catalog.close()
+
+    app = FastAPI(title="轻设云端素材库", version="1.0.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(active_settings.allowed_origins),
@@ -506,15 +516,11 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         dependencies=[Depends(require_admin)],
     )
     def pair_processing_node(payload: NodePairRequest) -> dict[str, str]:
-        return processing.pair_node(payload.name, payload.platform)
-
-    @app.post(
-        "/api/v1/processing-nodes/register",
-        status_code=status.HTTP_201_CREATED,
-    )
-    def register_processing_node(payload: NodePairRequest) -> dict[str, str]:
-        """Allow a local cutout worker to come online without admin pairing."""
-        return processing.register_node(payload.name, payload.platform)
+        return processing.pair_node(
+            payload.name,
+            payload.platform,
+            None if payload.panel_client_id is None else str(payload.panel_client_id),
+        )
 
     @app.post(
         "/api/v1/admin/extension-devices/pair",
