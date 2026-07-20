@@ -182,9 +182,18 @@ class Catalog:
         parameters: list[object] = []
         join = ""
         if query:
-            join = "JOIN assets_fts f ON f.asset_id=a.id"
-            clauses.append("assets_fts MATCH ?")
-            parameters.append(f'"{query.replace(chr(34), chr(34) * 2)}"')
+            if len(query) < 3:
+                clauses.append(
+                    "(instr(lower(a.name), lower(?)) > 0 "
+                    "OR instr(lower(a.code), lower(?)) > 0 "
+                    "OR instr(lower(a.category), lower(?)) > 0 "
+                    "OR instr(lower(a.tags), lower(?)) > 0)"
+                )
+                parameters.extend((query, query, query, query))
+            else:
+                join = "JOIN assets_fts f ON f.asset_id=a.id"
+                clauses.append("assets_fts MATCH ?")
+                parameters.append(f'"{query.replace(chr(34), chr(34) * 2)}"')
         if category:
             clauses.append("a.category=?")
             parameters.append(category)

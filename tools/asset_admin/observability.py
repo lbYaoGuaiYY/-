@@ -247,6 +247,8 @@ def memory_snapshot() -> dict[str, int | float]:
             values.get("MemAvailable", values.get("MemFree", 0)),
         )
     except (OSError, KeyError, ValueError):
+        if platform.system() == "Windows":
+            return windows_memory_snapshot()
         page_size = int(os.sysconf("SC_PAGE_SIZE"))
         total = page_size * int(os.sysconf("SC_PHYS_PAGES"))
         if platform.system() == "Darwin":
@@ -254,6 +256,33 @@ def memory_snapshot() -> dict[str, int | float]:
         else:
             available = page_size * int(os.sysconf("SC_AVPHYS_PAGES"))
         return usage_payload(total, total - available, available)
+
+
+def windows_memory_snapshot() -> dict[str, int | float]:
+    import ctypes
+    from ctypes import wintypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", wintypes.DWORD),
+            ("dwMemoryLoad", wintypes.DWORD),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    status = MemoryStatusEx()
+    status.dwLength = ctypes.sizeof(MemoryStatusEx)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    if not kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    total = int(status.ullTotalPhys)
+    available = int(status.ullAvailPhys)
+    return usage_payload(total, total - available, available)
 
 
 def darwin_available_memory(page_size: int) -> int:

@@ -5,7 +5,6 @@ import { zipSync } from "fflate"
 const root = resolve("browser-extension")
 const source = resolve(root, "src")
 const output = resolve(root, "dist")
-const version = "0.2.0"
 const sharedFiles = ["popup.js", "popup.html", "popup.css"]
 
 async function copyShared(target) {
@@ -33,6 +32,7 @@ async function archiveDirectory(directory, destination) {
 await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 const baseManifest = JSON.parse(await readFile(resolve(root, "manifest.json"), "utf8"))
+const version = baseManifest.version
 
 const chromeOutput = resolve(output, "chrome")
 await mkdir(chromeOutput, { recursive: true })
@@ -61,6 +61,8 @@ const chromeArchive = resolve(root, `qingshe-image-archive-${version}-chrome.zip
 const firefoxArchive = resolve(root, `qingshe-image-archive-${version}-firefox.xpi`)
 await archiveDirectory(chromeOutput, chromeArchive)
 await archiveDirectory(firefoxOutput, firefoxArchive)
+await cp(chromeArchive, resolve(root, "qingshe-image-archive-chrome.zip"))
+await cp(firefoxArchive, resolve(root, "qingshe-image-archive-firefox.xpi"))
 
 console.log(`Built Chrome extension: ${chromeOutput}`)
 console.log(`Built Firefox extension: ${firefoxOutput}`)

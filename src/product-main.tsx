@@ -92,10 +92,9 @@ const downloads: DownloadItem[] = [
     description: "轻设配套：从 AI 网页收集图片，发送到云素材面板。",
     meta: "Chrome / Edge + Firefox · 0.2.0",
     action: "下载 Chrome / Edge",
-    href: "/admin/downloads/qingshe-image-archive-0.2.0-chrome.zip?rev=20260715-full-auto",
+    href: "/admin/downloads/qingshe-image-archive-chrome.zip?rev=20260720",
     secondaryAction: "下载 Firefox",
-    secondaryHref:
-      "/admin/downloads/qingshe-image-archive-0.2.0-firefox.xpi?rev=20260715-full-auto",
+    secondaryHref: "/admin/downloads/qingshe-image-archive-firefox.xpi?rev=20260720",
     available: true,
   },
 ]

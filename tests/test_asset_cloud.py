@@ -232,6 +232,46 @@ def test_publish_and_read_asset_when_tokens_are_valid(tmp_path: Path) -> None:
     assert client.get("/api/v1/assets").status_code == 401
 
 
+def test_editor_search_finds_assets_with_two_character_query(tmp_path: Path) -> None:
+    settings = CloudSettings(
+        library_root=tmp_path,
+        editor_token="editor-secret",
+        admin_token="admin-secret",
+        allowed_origins=(),
+    )
+    client = TestClient(create_app(settings))
+    published = client.post(
+        "/api/v1/admin/assets/publish",
+        headers={"Authorization": "Bearer admin-secret"},
+        data={
+            "metadata": json.dumps(
+                {
+                    "name": "别墅背景",
+                    "category": "其他",
+                    "width": 320,
+                    "height": 240,
+                    "needs_review": False,
+                }
+            )
+        },
+        files={
+            "original": ("source.png", b"original-image", "image/png"),
+            "processed": ("processed.png", b"transparent-image", "image/png"),
+            "thumbnail": ("thumbnail.webp", b"thumbnail-image", "image/webp"),
+        },
+    )
+    assert published.status_code == 201, published.text
+
+    searched = client.get(
+        "/api/v1/assets",
+        headers={"Authorization": "Bearer editor-secret"},
+        params={"query": "别墅"},
+    )
+
+    assert searched.status_code == 200, searched.text
+    assert [asset["name"] for asset in searched.json()["assets"]] == ["别墅背景"]
+
+
 def test_remote_processing_node_can_claim_and_complete_cloud_task(tmp_path: Path) -> None:
     settings = CloudSettings(
         library_root=tmp_path,

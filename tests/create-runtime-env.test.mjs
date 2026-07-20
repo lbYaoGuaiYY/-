@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { existsSync } from "node:fs"
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, resolve } from "node:path"
@@ -8,6 +9,16 @@ import { describe, expect, it } from "vitest"
 
 const execFileAsync = promisify(execFile)
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+const shellExecutable = resolveShellExecutable()
+
+function resolveShellExecutable() {
+  if (process.platform !== "win32") return "sh"
+  const candidates = [
+    resolve(process.env.ProgramFiles ?? "C:/Program Files", "Git/bin/sh.exe"),
+    resolve(process.env.LOCALAPPDATA ?? "", "Programs/Git/bin/sh.exe"),
+  ]
+  return candidates.find((candidate) => existsSync(candidate)) ?? "sh"
+}
 
 describe("cloud editor runtime environment", () => {
   it("writes Vite-readable editor settings to the project root", async () => {
@@ -29,7 +40,7 @@ describe("cloud editor runtime environment", () => {
         { mode: 0o600 },
       )
 
-      await execFileAsync("sh", [scriptPath], { cwd: temporaryRoot })
+      await execFileAsync(shellExecutable, [scriptPath], { cwd: temporaryRoot })
 
       const editorEnv = await readFile(resolve(temporaryRoot, ".env.local"), "utf8")
       expect(editorEnv).toContain("VITE_ASSET_SERVICE_URL=https://assets.xiduoduo.top/api/v1")
@@ -51,7 +62,7 @@ describe("cloud editor runtime environment", () => {
     try {
       await mkdir(dirname(scriptPath), { recursive: true })
       await cp(scriptSource, scriptPath)
-      await execFileAsync("sh", [scriptPath], { cwd: temporaryRoot })
+      await execFileAsync(shellExecutable, [scriptPath], { cwd: temporaryRoot })
 
       const cloudEnv = await readFile(resolve(temporaryRoot, "deploy/asset-cloud/.env"), "utf8")
       expect(cloudEnv).toContain("https://assets.xiduoduo.top")
