@@ -8,3 +8,13 @@ export declare function getIosSwiftProductsPath(
   swiftTarget: string,
   configuration: string,
 ): string
+export declare function resolveIosSwiftProductsPath(
+  buildPath: string,
+  swiftTarget: string,
+  configuration: string,
+  pathExists: (path: string) => boolean,
+): {
+  linkPath: string
+  productsPath: string
+  requiresCompatibilityLink: boolean
+}

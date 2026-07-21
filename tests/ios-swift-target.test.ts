@@ -4,6 +4,7 @@ import {
   getIosSwiftLinkSearchPath,
   getIosSwiftProductsPath,
   getIosSwiftTarget,
+  resolveIosSwiftProductsPath,
 } from "../scripts/ios-swift-target.mjs"
 
 describe("iOS SwiftPM target mapping", () => {
@@ -31,5 +32,37 @@ describe("iOS SwiftPM target mapping", () => {
     expect(
       getIosSwiftProductsPath("/tmp/swift-package", "arm64-apple-ios15.0-simulator", "debug"),
     ).toBe("/tmp/swift-package/out/Products/Debug-iphonesimulator")
+  })
+
+  it("keeps Xcode 26 SwiftPM output in place instead of deleting it", () => {
+    const swiftRsPath = "/tmp/swift-package/arm64-apple-macosx/debug"
+    expect(
+      resolveIosSwiftProductsPath(
+        "/tmp/swift-package",
+        "arm64-apple-ios15.0-simulator",
+        "debug",
+        (path) => path === swiftRsPath,
+      ),
+    ).toEqual({
+      linkPath: swiftRsPath,
+      productsPath: swiftRsPath,
+      requiresCompatibilityLink: false,
+    })
+  })
+
+  it("links swift-rs to Xcode 27 products when that layout is present", () => {
+    const xcodePath = "/tmp/swift-package/out/Products/Debug-iphonesimulator"
+    expect(
+      resolveIosSwiftProductsPath(
+        "/tmp/swift-package",
+        "arm64-apple-ios15.0-simulator",
+        "debug",
+        (path) => path === xcodePath,
+      ),
+    ).toEqual({
+      linkPath: "/tmp/swift-package/arm64-apple-macosx/debug",
+      productsPath: xcodePath,
+      requiresCompatibilityLink: true,
+    })
   })
 })

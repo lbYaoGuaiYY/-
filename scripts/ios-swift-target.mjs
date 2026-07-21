@@ -32,6 +32,33 @@ export function getIosSwiftProductsPath(buildPath, swiftTarget, configuration) {
   return posix.join(buildPath, "out", "Products", `${productConfiguration}-${sdk}`)
 }
 
+export function resolveIosSwiftProductsPath(buildPath, swiftTarget, configuration, pathExists) {
+  const xcodeProductsPath = getIosSwiftProductsPath(buildPath, swiftTarget, configuration)
+  const swiftRsProductsPath = posix.join(
+    buildPath,
+    getIosSwiftLinkSearchPath(swiftTarget, configuration),
+  )
+
+  if (pathExists(xcodeProductsPath)) {
+    return {
+      linkPath: swiftRsProductsPath,
+      productsPath: xcodeProductsPath,
+      requiresCompatibilityLink: true,
+    }
+  }
+  if (pathExists(swiftRsProductsPath)) {
+    return {
+      linkPath: swiftRsProductsPath,
+      productsPath: swiftRsProductsPath,
+      requiresCompatibilityLink: false,
+    }
+  }
+
+  throw new Error(
+    `SwiftPM products were not found at ${xcodeProductsPath} or ${swiftRsProductsPath}`,
+  )
+}
+
 if (process.argv[1]?.endsWith("ios-swift-target.mjs")) {
   const [, , rustTarget, minimumVersion = "15.0"] = process.argv
   process.stdout.write(`${getIosSwiftTarget(rustTarget, minimumVersion)}\n`)

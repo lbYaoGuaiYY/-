@@ -2,6 +2,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process"
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -13,11 +14,7 @@ import {
 import { tmpdir } from "node:os"
 import { dirname, join, relative } from "node:path"
 
-import {
-  getIosSwiftLinkSearchPath,
-  getIosSwiftProductsPath,
-  getIosSwiftTarget,
-} from "./ios-swift-target.mjs"
+import { getIosSwiftTarget, resolveIosSwiftProductsPath } from "./ios-swift-target.mjs"
 
 const N_STAB = 0xe0
 const N_PEXT = 0x10
@@ -73,22 +70,21 @@ const result = spawnSync(realSwift, swiftArgs, {
 if (result.error) throw result.error
 
 if (result.status === 0 && iosSwiftTarget && swiftPackageBuildPath) {
-  const productsDirectory = getIosSwiftProductsPath(
+  const { linkPath, productsPath, requiresCompatibilityLink } = resolveIosSwiftProductsPath(
     swiftPackageBuildPath,
     iosSwiftTarget,
     swiftPackageConfiguration,
+    existsSync,
   )
-  const linkDirectory = join(
-    swiftPackageBuildPath,
-    getIosSwiftLinkSearchPath(iosSwiftTarget, swiftPackageConfiguration),
-  )
-  mkdirSync(dirname(linkDirectory), { recursive: true })
-  rmSync(linkDirectory, { force: true, recursive: true })
-  symlinkSync(relative(dirname(linkDirectory), productsDirectory), linkDirectory, "dir")
+  if (requiresCompatibilityLink) {
+    mkdirSync(dirname(linkPath), { recursive: true })
+    rmSync(linkPath, { force: true, recursive: true })
+    symlinkSync(relative(dirname(linkPath), productsPath), linkPath, "dir")
+  }
 
   // Xcode 27 / Swift 6.4 can leave @_cdecl exports as private-external, which
   // makes Rust fail to resolve Tauri/iOS bridge symbols at link time.
-  globalizeIosCdeclExports(productsDirectory)
+  globalizeIosCdeclExports(productsPath)
 }
 
 process.exit(result.status ?? 1)
