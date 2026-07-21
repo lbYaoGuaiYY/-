@@ -53,6 +53,6 @@ describe("release workflow credential boundary", () => {
       "utf8",
     )
 
-    expect(xcodeScript).toContain('export CI="${CI:-true}"')
+    expect(xcodeScript).toMatch(/export CI="\$\{CI:-true\}"/)
   })
 })
