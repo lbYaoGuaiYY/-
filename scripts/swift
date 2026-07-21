@@ -2,8 +2,6 @@
 
 import { execFileSync, spawnSync } from "node:child_process"
 import {
-  existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -12,9 +10,15 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join, relative } from "node:path"
+import { basename, join } from "node:path"
 
-import { getIosSwiftTarget, resolveIosSwiftProductsPath } from "./ios-swift-target.mjs"
+import {
+  getIosSwiftLinkSearchPath,
+  getIosSwiftTarget,
+  parseIosSwiftProductsPath,
+  prepareIosSwiftProductsLink,
+  rollbackIosSwiftProductsLink,
+} from "./ios-swift-target.mjs"
 
 const N_STAB = 0xe0
 const N_PEXT = 0x10
@@ -70,21 +74,45 @@ const result = spawnSync(realSwift, swiftArgs, {
 if (result.error) throw result.error
 
 if (result.status === 0 && iosSwiftTarget && swiftPackageBuildPath) {
-  const { linkPath, productsPath, requiresCompatibilityLink } = resolveIosSwiftProductsPath(
-    swiftPackageBuildPath,
-    iosSwiftTarget,
-    swiftPackageConfiguration,
-    existsSync,
+  const productsResult = spawnSync(
+    realSwift,
+    ["build", "--show-bin-path", ...swiftArgs.slice(1)],
+    {
+      encoding: "utf8",
+      env: process.env,
+    },
   )
-  if (requiresCompatibilityLink) {
-    mkdirSync(dirname(linkPath), { recursive: true })
-    rmSync(linkPath, { force: true, recursive: true })
-    symlinkSync(relative(dirname(linkPath), productsPath), linkPath, "dir")
+  if (productsResult.error) throw productsResult.error
+  if (productsResult.status !== 0) {
+    throw new Error(
+      `SwiftPM failed to report its products directory: ${productsResult.stderr.trim()}`,
+    )
   }
+  const productsDirectory = parseIosSwiftProductsPath(productsResult.stdout)
+  const linkDirectory = join(
+    swiftPackageBuildPath,
+    getIosSwiftLinkSearchPath(iosSwiftTarget, swiftPackageConfiguration),
+  )
+  const linkState = prepareIosSwiftProductsLink(productsDirectory, linkDirectory, {
+    allowedRoot: swiftPackageBuildPath,
+    expectedArchive: `lib${basename(swiftPackageBuildPath)}.a`,
+  })
 
   // Xcode 27 / Swift 6.4 can leave @_cdecl exports as private-external, which
   // makes Rust fail to resolve Tauri/iOS bridge symbols at link time.
-  globalizeIosCdeclExports(productsPath)
+  try {
+    globalizeIosCdeclExports(productsDirectory)
+  } catch (error) {
+    try {
+      rollbackIosSwiftProductsLink(linkState)
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "Swift archive globalization failed and the previous link layout could not be restored",
+      )
+    }
+    throw error
+  }
 }
 
 process.exit(result.status ?? 1)
