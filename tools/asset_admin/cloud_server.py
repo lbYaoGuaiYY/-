@@ -607,6 +607,15 @@ def category_for_direct_publish(category: str | None, name: str) -> tuple[str, b
     return category, False
 
 
+def processing_task_handle(task_id: str, lease_owner: str) -> str:
+    return f"{task_id}.{lease_owner}"
+
+
+def parse_processing_task_handle(value: str) -> tuple[str, str | None]:
+    task_id, separator, lease_owner = value.partition(".")
+    return task_id, lease_owner if separator and lease_owner else None
+
+
 def create_app(settings: CloudSettings | None = None) -> FastAPI:
     active_settings = settings or load_settings()
     paths = LibraryPaths.create(active_settings.library_root)
@@ -616,6 +625,32 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     processing = RemoteProcessingStore(active_settings.library_root)
     submissions = SubmissionStore(active_settings.library_root)
     automation = ExtensionAutomationStore(active_settings.library_root)
+
+    def reconcile_processing_completions() -> None:
+        for task_id, asset_id in processing.pending_completion_outbox():
+            try:
+                asset = catalog.get_asset(asset_id)
+                if asset is None:
+                    continue
+                submission = submissions.get_by_task(task_id)
+                if submission is not None:
+                    submission_status = (
+                        "approved"
+                        if str(asset.get("status")) == "ready"
+                        and not bool(asset.get("needs_review"))
+                        else "pending_review"
+                    )
+                    submissions.mark_task_complete(
+                        task_id, asset_id, status=submission_status
+                    )
+                processing.remove_task_original(task_id)
+                automation.complete_processing_task(task_id, asset_id)
+                processing.acknowledge_completion(task_id)
+            except Exception:  # noqa: BLE001
+                # The durable outbox remains for the next health poll/startup.
+                continue
+
+    reconcile_processing_completions()
     bearer = HTTPBearer(auto_error=False)
     login_attempts: dict[str, list[float]] = {}
     login_attempts_lock = Lock()
@@ -896,7 +931,19 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
 
     @app.get("/api/v1/health")
     def health() -> dict[str, str]:
+        reconcile_processing_completions()
         return {"status": controls.health_status}
+
+    @app.get("/api/v1/ready")
+    def ready() -> dict[str, str]:
+        service_status = controls.health_status
+        if service_status != "ready":
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"status": service_status},
+                headers={"Retry-After": "5"},
+            )
+        return {"status": service_status}
 
     @app.post(
         "/api/v1/submission-sessions",
@@ -1023,7 +1070,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                 approved = bool(result.get("needs_review") is not None and not result.get("needs_review"))
                 if not bool(result["duplicate"]):
                     completed_category, _ = category_for_completed_asset(category, metadata.name)
-                    catalog.complete_job(
+                    catalog_completed = catalog.complete_job(
                         str(result["job_id"]),
                         asset_id,
                         status="ready",
@@ -1035,6 +1082,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
                         thumbnail_path=str(original_path),
                         tags=json.dumps([completed_category], ensure_ascii=False),
                     )
+                    if not catalog_completed:
+                        raise HTTPException(status.HTTP_409_CONFLICT, "Catalog job state has changed")
                     approved = False
                 submissions.bind_asset(
                     submission.id,
@@ -1330,7 +1379,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         submissions.mark_processing(task.id)
         return {
             "task": {
-                "id": task.id,
+                "id": processing_task_handle(task.id, task.lease_owner or node_id),
                 "name": task.name,
                 "category": task.category,
                 "needs_review": task.needs_review,
@@ -1348,7 +1397,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     def read_processing_original(
         task_id: str, node_id: Annotated[str, Depends(require_node)]
     ) -> FileResponse:
-        task = processing.task_for_node(task_id, node_id)
+        raw_task_id, lease_owner = parse_processing_task_handle(task_id)
+        task = processing.task_for_node(raw_task_id, node_id, lease_owner)
         if task is None or not task.original_path.is_file():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "处理任务不存在")
         return FileResponse(task.original_path, media_type=task.original_mime)
@@ -1361,7 +1411,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         thumbnail: Annotated[UploadFile, File()],
         node_id: Annotated[str, Depends(require_node)],
     ) -> dict[str, str | bool | None]:
-        task = processing.task_for_node(task_id, node_id)
+        raw_task_id, lease_owner = parse_processing_task_handle(task_id)
+        task = processing.task_for_node(raw_task_id, node_id, lease_owner)
         if task is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "处理任务不存在")
         try:
@@ -1382,60 +1433,55 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             ) from error
         if (processed_width, processed_height) != (metadata.width, metadata.height):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "处理结果尺寸不匹配")
-        submission = submissions.get_by_task(task_id)
-        catalog_original_path = task.original_path
-        if submission is not None:
-            # Keep a durable originals copy; incoming is only a processing
-            # scratch area and is removed once this transaction succeeds.
-            catalog_original_path = paths.originals / f"{task.content_hash}{task.original_path.suffix}"
-            if not catalog_original_path.exists():
-                atomic_write(catalog_original_path, task.original_path.read_bytes())
-        result = catalog.create_asset(
-            name=task.name,
-            mime_type=task.original_mime,
-            content_hash=task.content_hash,
-            original_path=catalog_original_path,
-        )
-        asset_id = str(result["id"])
-        if not bool(result["duplicate"]):
-            category, automatic_review = category_for_completed_asset(task.category, task.name)
-            processed_path = paths.processed / f"{asset_id}.png"
-            thumbnail_path = paths.thumbnails / f"{asset_id}.webp"
-            atomic_write(processed_path, processed_content)
-            atomic_write(thumbnail_path, thumbnail_content)
-            catalog.complete_job(
-                str(result["job_id"]),
-                asset_id,
-                status="ready",
-                category=category,
-                needs_review=int(task.needs_review or automatic_review),
-                width=metadata.width,
-                height=metadata.height,
-                processed_path=str(processed_path),
-                thumbnail_path=str(thumbnail_path),
-                dominant_color=metadata.dominant_color,
-                tags=json.dumps([category], ensure_ascii=False),
+        with processing.task_commit(raw_task_id, node_id, lease_owner) as finish_task:
+            if finish_task is None:
+                raise HTTPException(status.HTTP_409_CONFLICT, "Processing task lease has changed")
+            submission = submissions.get_by_task(raw_task_id)
+            catalog_original_path = task.original_path
+            if submission is not None:
+                # Keep a durable originals copy; incoming is only a processing
+                # scratch area and is removed once this transaction succeeds.
+                catalog_original_path = (
+                    paths.originals / f"{task.content_hash}{task.original_path.suffix}"
+                )
+                if not catalog_original_path.exists():
+                    atomic_write(catalog_original_path, task.original_path.read_bytes())
+            result = catalog.create_asset(
+                name=task.name,
+                mime_type=task.original_mime,
+                content_hash=task.content_hash,
+                original_path=catalog_original_path,
             )
-        if not processing.complete_task(task_id, node_id, asset_id):
-            raise HTTPException(status.HTTP_409_CONFLICT, "处理任务状态已变化")
-        submission_status = "pending_review"
-        if bool(result["duplicate"]):
-            existing_asset = catalog.get_asset(asset_id)
-            if (
-                existing_asset is not None
-                and str(existing_asset.get("status")) == "ready"
-                and not bool(existing_asset.get("needs_review"))
-            ):
-                # Reusing a legacy/admin-approved asset must not make it
-                # private merely because this submission arrived later.
-                submission_status = "approved"
-        submissions.mark_task_complete(
-            task_id, asset_id, status=submission_status
-        )
-        if submission is not None:
-            processing.remove_task_original(task_id, node_id)
-        automation.complete_processing_task(task_id, asset_id)
-        return {"asset_id": asset_id, "duplicate": bool(result["duplicate"])}
+            asset_id = str(result["id"])
+            duplicate = bool(result["duplicate"])
+            existing_asset = catalog.get_asset(asset_id) if duplicate else None
+            should_finalize = not duplicate or (
+                existing_asset is not None and str(existing_asset.get("status")) != "ready"
+            )
+            if should_finalize:
+                category, automatic_review = category_for_completed_asset(task.category, task.name)
+                processed_path = paths.processed / f"{asset_id}.png"
+                thumbnail_path = paths.thumbnails / f"{asset_id}.webp"
+                atomic_write(processed_path, processed_content)
+                atomic_write(thumbnail_path, thumbnail_content)
+                catalog_completed = catalog.complete_direct_asset(
+                    asset_id,
+                    status="ready",
+                    category=category,
+                    needs_review=int(task.needs_review or automatic_review),
+                    width=metadata.width,
+                    height=metadata.height,
+                    processed_path=str(processed_path),
+                    thumbnail_path=str(thumbnail_path),
+                    dominant_color=metadata.dominant_color,
+                    tags=json.dumps([category], ensure_ascii=False),
+                )
+                if not catalog_completed:
+                    raise HTTPException(status.HTTP_409_CONFLICT, "Catalog job state has changed")
+            if not finish_task(asset_id):
+                raise HTTPException(status.HTTP_409_CONFLICT, "处理任务状态已变化")
+        reconcile_processing_completions()
+        return {"asset_id": asset_id, "duplicate": duplicate}
 
     @app.post("/api/v1/processing-tasks/{task_id}/fail")
     def fail_processing_task(
@@ -1443,12 +1489,13 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         payload: dict[str, str],
         node_id: Annotated[str, Depends(require_node)],
     ) -> dict[str, bool]:
+        raw_task_id, lease_owner = parse_processing_task_handle(task_id)
         message = str(payload.get("error", "本地处理节点处理失败"))[:500]
-        if processing.task_for_node(task_id, node_id) is None:
+        if processing.task_for_node(raw_task_id, node_id, lease_owner) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "处理任务不存在")
-        if not processing.fail_task(task_id, node_id, message):
+        if not processing.fail_task(raw_task_id, node_id, message, lease_owner):
             raise HTTPException(status.HTTP_409_CONFLICT, "处理任务状态已变化")
-        submission = submissions.get_by_task(task_id)
+        submission = submissions.get_by_task(raw_task_id)
         if submission is not None:
             submissions.mark_failed(submission.id, message)
         return {"ok": True}
@@ -1607,7 +1654,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         thumbnail_path = paths.thumbnails / f"{asset_id}.webp"
         atomic_write(processed_path, processed)
         atomic_write(thumbnail_path, thumbnail)
-        catalog.complete_job(
+        catalog_completed = catalog.complete_job(
             str(result["job_id"]),
             asset_id,
             status="ready",
@@ -1619,6 +1666,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             thumbnail_path=str(thumbnail_path),
             tags=json.dumps([category], ensure_ascii=False),
         )
+        if not catalog_completed:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Catalog job state has changed")
         return PublishResponse(id=asset_id, code=str(result["code"]), duplicate=False)
 
     @app.post(
@@ -1660,7 +1709,7 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
         thumbnail_path = paths.thumbnails / f"{asset_id}.webp"
         atomic_write(processed_path, processed_content)
         atomic_write(thumbnail_path, thumbnail_content)
-        catalog.complete_job(
+        catalog_completed = catalog.complete_job(
             str(result["job_id"]),
             asset_id,
             status="ready",
@@ -1672,6 +1721,8 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
             thumbnail_path=str(thumbnail_path),
             tags=json.dumps([category], ensure_ascii=False),
         )
+        if not catalog_completed:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Catalog job state has changed")
         return PublishResponse(id=asset_id, code=str(result["code"]), duplicate=False)
 
     @app.patch("/api/v1/admin/assets/{asset_id}", dependencies=[Depends(require_admin)])

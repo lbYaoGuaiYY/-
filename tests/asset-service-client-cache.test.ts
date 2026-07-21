@@ -60,4 +60,81 @@ describe("asset service conditional catalog requests", () => {
       headers: { "If-None-Match": '"catalog-1"' },
     })
   })
+
+  it("forwards a caller AbortSignal to the catalog request", async () => {
+    kyMock.get.mockResolvedValueOnce(
+      new Response(JSON.stringify({ assets: [] }), {
+        headers: { "X-Catalog-Revision": "2" },
+      }),
+    )
+    const { listServiceAssetPage } = await import("../src/features/assets/asset-service-client")
+    const controller = new AbortController()
+
+    await listServiceAssetPage(
+      {
+        search: "signal-test",
+        category: "",
+        status: "ready",
+        needsReview: false,
+        limit: 121,
+        offset: 0,
+      },
+      { signal: controller.signal },
+    )
+
+    expect(kyMock.get.mock.calls[0]?.[1]).toMatchObject({ signal: controller.signal })
+  })
+
+  it("does not cache an aborted response", async () => {
+    let resolveResponse!: (response: Response) => void
+    kyMock.get.mockImplementationOnce(
+      () => new Promise<Response>((resolve) => (resolveResponse = resolve)),
+    )
+    const { listServiceAssetPage } = await import("../src/features/assets/asset-service-client")
+    const query = {
+      search: "aborted-cache",
+      category: "",
+      status: "ready",
+      needsReview: false,
+      limit: 122,
+      offset: 0,
+    } as const
+    const controller = new AbortController()
+    const request = listServiceAssetPage(query, { signal: controller.signal })
+    controller.abort()
+    resolveResponse(
+      new Response(JSON.stringify({ assets: [] }), {
+        headers: { ETag: '"aborted-etag"', "X-Catalog-Revision": "3" },
+      }),
+    )
+    await expect(request).rejects.toThrow()
+
+    kyMock.get.mockResolvedValueOnce(new Response(JSON.stringify({ assets: [] })))
+    await listServiceAssetPage(query)
+    expect(kyMock.get.mock.calls.at(-1)?.[1]).not.toMatchObject({
+      headers: { "If-None-Match": '"aborted-etag"' },
+    })
+  })
+
+  it("rejects an aborted signal without relying on throwIfAborted", async () => {
+    const { listServiceAssetPage } = await import("../src/features/assets/asset-service-client")
+    const controller = new AbortController()
+    Object.defineProperty(controller.signal, "throwIfAborted", { value: undefined })
+    controller.abort()
+
+    await expect(
+      listServiceAssetPage(
+        {
+          search: "legacy-webkit-abort",
+          category: "",
+          status: "ready",
+          needsReview: false,
+          limit: 123,
+          offset: 0,
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" })
+    expect(kyMock.get).not.toHaveBeenCalled()
+  })
 })

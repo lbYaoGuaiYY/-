@@ -2,6 +2,11 @@ import Dexie, { type Table } from "dexie"
 import { z } from "zod"
 import { isDesktopRuntime } from "../../platform/runtime"
 import type { ServiceAsset } from "./asset-service-client"
+import {
+  isCurrentProcessedVersion,
+  planCatalogVersionPrune,
+  planProcessedVersionWrite,
+} from "./cloud-asset-cache-versioning"
 import { ASSET_CATEGORIES, type AssetCategory } from "./demo-assets"
 import { nativeCloudAssetCache } from "./native-cloud-asset-cache"
 
@@ -94,8 +99,43 @@ export class CloudAssetCache {
     const records = assets.map((asset) =>
       CachedServiceAssetSchema.parse({ ...asset, cachedAt, schemaVersion: CATALOG_RECORD_VERSION }),
     )
+    const incomingById = new Map<string, CachedServiceAsset>()
+    for (const record of records) {
+      const previous = incomingById.get(record.id)
+      if (previous === undefined || record.version >= previous.version) {
+        incomingById.set(record.id, record)
+      }
+    }
     await this.withDatabase(async (database) => {
-      await database.catalog.bulkPut(records)
+      await database.transaction("rw", database.catalog, database.processed, async () => {
+        const incoming = [...incomingById.values()]
+        const existing = await database.catalog.bulkGet(incoming.map((record) => record.id))
+        const accepted: CachedServiceAsset[] = []
+        const advancedVersions = new Map<string, number>()
+        for (const [index, record] of incoming.entries()) {
+          const previous = existing[index]
+          if (previous !== undefined) {
+            const parsedPrevious = CachedServiceAssetSchema.parse(previous)
+            if (record.version < parsedPrevious.version) continue
+            if (record.version > parsedPrevious.version) {
+              advancedVersions.set(record.id, record.version)
+            }
+          } else {
+            advancedVersions.set(record.id, record.version)
+          }
+          accepted.push(record)
+        }
+        if (accepted.length > 0) await database.catalog.bulkPut(accepted)
+        if (advancedVersions.size === 0) return
+        const processed = (
+          await database.processed
+            .where("id")
+            .anyOf([...advancedVersions.keys()])
+            .toArray()
+        ).map((candidate) => CachedProcessedAssetSchema.parse(candidate))
+        const staleCacheKeys = planCatalogVersionPrune(processed, advancedVersions)
+        if (staleCacheKeys.length > 0) await database.processed.bulkDelete([...staleCacheKeys])
+      })
     })
   }
 
@@ -130,10 +170,17 @@ export class CloudAssetCache {
       pinned: false,
     })
     await this.withDatabase(async (database) => {
-      const existing = await database.processed.get(record.cacheKey)
-      const pinned =
-        existing === undefined ? false : CachedProcessedAssetSchema.parse(existing).pinned
-      await database.processed.put({ ...record, pinned })
+      await database.transaction("rw", database.processed, async () => {
+        const existing = (await database.processed.where("id").equals(record.id).toArray()).map(
+          (candidate) => CachedProcessedAssetSchema.parse(candidate),
+        )
+        const plan = planProcessedVersionWrite(existing, record)
+        if (!plan.shouldWrite) return
+        await database.processed.put(plan.record)
+        if (plan.staleCacheKeys.length > 0) {
+          await database.processed.bulkDelete([...plan.staleCacheKeys])
+        }
+      })
     })
   }
 
@@ -164,6 +211,7 @@ export class CloudAssetCache {
       )
       const assets = (await database.processed.toArray())
         .map((record) => CachedProcessedAssetSchema.parse(record))
+        .filter((record) => isCurrentProcessedVersion(record, catalog.get(record.id)?.version))
         .map((record) => toOfflineCachedAsset(record, catalog.get(record.id)))
         .sort(
           (left, right) => right.bytes - left.bytes || left.name.localeCompare(right.name, "zh-CN"),
@@ -181,27 +229,31 @@ export class CloudAssetCache {
     if (isDesktopRuntime()) return nativeCloudAssetCache.setPinned(assetIds, pinned)
     const targets = new Set(assetIds)
     return this.withDatabase(async (database) => {
-      const updates = (await database.processed.toArray())
-        .map((record) => CachedProcessedAssetSchema.parse(record))
-        .filter((record) => targets.has(record.id) && record.pinned !== pinned)
-        .map((record) => ({ ...record, pinned }))
-      if (updates.length > 0) await database.processed.bulkPut(updates)
-      return updates.length
+      return database.transaction("rw", database.processed, async () => {
+        const updates = (await database.processed.toArray())
+          .map((record) => CachedProcessedAssetSchema.parse(record))
+          .filter((record) => targets.has(record.id) && record.pinned !== pinned)
+          .map((record) => ({ ...record, pinned }))
+        if (updates.length > 0) await database.processed.bulkPut(updates)
+        return updates.length
+      })
     })
   }
 
   async clearUnpinned(): Promise<OfflineCacheClearResult> {
     if (isDesktopRuntime()) return nativeCloudAssetCache.clearUnpinned()
     return this.withDatabase(async (database) => {
-      const removable = (await database.processed.toArray())
-        .map((record) => CachedProcessedAssetSchema.parse(record))
-        .filter((record) => !record.pinned)
-      if (removable.length > 0)
-        await database.processed.bulkDelete(removable.map((record) => record.cacheKey))
-      return {
-        bytes: removable.reduce((total, record) => total + record.blob.size, 0),
-        count: removable.length,
-      }
+      return database.transaction("rw", database.processed, async () => {
+        const removable = (await database.processed.toArray())
+          .map((record) => CachedProcessedAssetSchema.parse(record))
+          .filter((record) => !record.pinned)
+        if (removable.length > 0)
+          await database.processed.bulkDelete(removable.map((record) => record.cacheKey))
+        return {
+          bytes: removable.reduce((total, record) => total + record.blob.size, 0),
+          count: removable.length,
+        }
+      })
     })
   }
 
@@ -210,16 +262,18 @@ export class CloudAssetCache {
     if (isDesktopRuntime()) return nativeCloudAssetCache.clearAssets(assetIds)
     const targets = new Set(assetIds)
     return this.withDatabase(async (database) => {
-      const removable = (await database.processed.toArray())
-        .map((record) => CachedProcessedAssetSchema.parse(record))
-        .filter((record) => targets.has(record.id))
-      if (removable.length > 0) {
-        await database.processed.bulkDelete(removable.map((record) => record.cacheKey))
-      }
-      return {
-        bytes: removable.reduce((total, record) => total + record.blob.size, 0),
-        count: removable.length,
-      }
+      return database.transaction("rw", database.processed, async () => {
+        const removable = (await database.processed.toArray())
+          .map((record) => CachedProcessedAssetSchema.parse(record))
+          .filter((record) => targets.has(record.id))
+        if (removable.length > 0) {
+          await database.processed.bulkDelete(removable.map((record) => record.cacheKey))
+        }
+        return {
+          bytes: removable.reduce((total, record) => total + record.blob.size, 0),
+          count: removable.length,
+        }
+      })
     })
   }
 

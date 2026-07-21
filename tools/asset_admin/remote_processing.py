@@ -4,14 +4,19 @@ import hashlib
 import secrets
 import sqlite3
 import threading
+import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Final, Iterator
 
 
-NODE_ACTIVE_SECONDS = 90
+NODE_ACTIVE_SECONDS: Final = 90
+LEASE_SECONDS: Final = 3600
+SQLITE_TIMEOUT_SECONDS: Final = 30.0
+SQLITE_BUSY_TIMEOUT_MS: Final = 30_000
 
 
 def now_iso() -> str:
@@ -29,6 +34,7 @@ class ProcessingTask:
     needs_review: bool
     status: str
     node_id: str | None
+    lease_owner: str | None
 
 
 class RemoteProcessingStore:
@@ -38,7 +44,11 @@ class RemoteProcessingStore:
         self._incoming = library_root / "incoming"
         self._incoming.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._connection = sqlite3.connect(library_root / "processing.db", check_same_thread=False)
+        self._connection = sqlite3.connect(
+            library_root / "processing.db",
+            check_same_thread=False,
+            timeout=SQLITE_TIMEOUT_SECONDS,
+        )
         self._connection.row_factory = sqlite3.Row
         with self._lock, self._connection:
             self._connection.executescript(
@@ -53,24 +63,44 @@ class RemoteProcessingStore:
                     id TEXT PRIMARY KEY, original_path TEXT NOT NULL, original_mime TEXT NOT NULL,
                     content_hash TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL,
                     needs_review INTEGER NOT NULL, status TEXT NOT NULL, node_id TEXT,
-                    asset_id TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                    asset_id TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    lease_owner TEXT, lease_expires_at REAL
                 );
                 CREATE INDEX IF NOT EXISTS processing_tasks_status_idx
                     ON processing_tasks(status, created_at);
+                CREATE TABLE IF NOT EXISTS processing_completion_outbox (
+                    task_id TEXT PRIMARY KEY, asset_id TEXT NOT NULL, created_at TEXT NOT NULL
+                );
                 """
+            )
+            self._connection.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+            task_columns = {
+                str(row[1]) for row in self._connection.execute("PRAGMA table_info(processing_tasks)")
+            }
+            if "lease_owner" not in task_columns:
+                self._add_column_if_missing("processing_tasks", "lease_owner", "TEXT")
+            if "lease_expires_at" not in task_columns:
+                self._add_column_if_missing("processing_tasks", "lease_expires_at", "REAL")
+            # Existing processing rows already identify their worker via node_id.
+            # Preserve those in-flight tasks while giving them a bounded lease.
+            self._connection.execute(
+                "UPDATE processing_tasks SET lease_owner=node_id,lease_expires_at=? "
+                "WHERE status='processing' AND node_id IS NOT NULL AND lease_owner IS NULL",
+                (time.time() + LEASE_SECONDS,),
             )
             node_columns = {
                 str(row["name"])
                 for row in self._connection.execute("PRAGMA table_info(processing_nodes)")
             }
             if "panel_client_id" not in node_columns:
-                self._connection.execute(
-                    "ALTER TABLE processing_nodes ADD COLUMN panel_client_id TEXT"
-                )
-            self._connection.execute(
-                "UPDATE processing_tasks SET status='pending', node_id=NULL "
-                "WHERE status='processing'"
-            )
+                self._add_column_if_missing("processing_nodes", "panel_client_id", "TEXT")
+
+    def _add_column_if_missing(self, table: str, column: str, definition: str) -> None:
+        try:
+            self._connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        except sqlite3.OperationalError as error:
+            if "duplicate column name" not in str(error).casefold():
+                raise
 
     @staticmethod
     def _hash_token(token: str) -> str:
@@ -160,50 +190,142 @@ class RemoteProcessingStore:
         return {"id": task_id, "status": "pending"}
 
     def claim_task(self, node_id: str) -> ProcessingTask | None:
+        now = time.time()
+        lease_owner = secrets.token_urlsafe(24)
         with self._lock, self._connection:
             row = self._connection.execute(
-                "SELECT * FROM processing_tasks WHERE status='pending' ORDER BY created_at LIMIT 1"
+                """
+                UPDATE processing_tasks
+                SET status='processing',node_id=?,lease_owner=?,lease_expires_at=?,updated_at=?
+                WHERE id=(
+                    SELECT id FROM processing_tasks
+                    WHERE status='pending'
+                       OR (status='processing' AND
+                           (lease_expires_at IS NULL OR lease_expires_at<=?))
+                    ORDER BY created_at LIMIT 1
+                )
+                RETURNING *
+                """,
+                (node_id, lease_owner, now + LEASE_SECONDS, now_iso(), now),
             ).fetchone()
             if row is None:
                 return None
-            self._connection.execute(
-                "UPDATE processing_tasks SET status='processing',node_id=?,updated_at=? WHERE id=?",
-                (node_id, now_iso(), row["id"]),
-            )
-        return self._task_from_row({**dict(row), "status": "processing", "node_id": node_id})
+        return self._task_from_row(dict(row))
 
-    def task_for_node(self, task_id: str, node_id: str) -> ProcessingTask | None:
+    def task_for_node(
+        self, task_id: str, node_id: str, lease_owner: str | None = None
+    ) -> ProcessingTask | None:
+        now = time.time()
+        expected_owner = node_id if lease_owner is None else lease_owner
         with self._lock:
             row = self._connection.execute(
-                "SELECT * FROM processing_tasks WHERE id=? AND node_id=? AND status='processing'",
-                (task_id, node_id),
+                "SELECT * FROM processing_tasks WHERE id=? AND node_id=? AND "
+                "lease_owner=? AND ((status='processing' AND lease_expires_at>?) "
+                "OR status='committing')",
+                (task_id, node_id, expected_owner, now),
             ).fetchone()
         return None if row is None else self._task_from_row(dict(row))
 
-    def complete_task(self, task_id: str, node_id: str, asset_id: str | None) -> bool:
+    def renew_task_lease(
+        self, task_id: str, node_id: str, lease_owner: str | None = None
+    ) -> bool:
+        now = time.time()
+        expected_owner = node_id if lease_owner is None else lease_owner
         with self._lock, self._connection:
             cursor = self._connection.execute(
-                "UPDATE processing_tasks SET status='ready',asset_id=?,error=NULL,updated_at=? "
-                "WHERE id=? AND node_id=? AND status='processing'",
-                (asset_id, now_iso(), task_id, node_id),
+                "UPDATE processing_tasks SET lease_expires_at=?,updated_at=? "
+                "WHERE id=? AND node_id=? AND lease_owner=? AND status='processing' "
+                "AND lease_expires_at>?",
+                (now + LEASE_SECONDS, now_iso(), task_id, node_id, expected_owner, now),
             )
         return cursor.rowcount == 1
 
-    def fail_task(self, task_id: str, node_id: str, message: str) -> bool:
-        """Allow a worker to release a failed lease and clean its scratch file."""
+    @contextmanager
+    def task_commit(
+        self, task_id: str, node_id: str, lease_owner: str | None = None
+    ) -> Iterator[Callable[[str | None], bool] | None]:
+        """Fence one remote commit with an uncommitted SQLite write transaction.
+
+        A concurrent claim or failure waits for this transaction. A process crash
+        rolls the task state back to processing, while successfully published
+        catalog/files can be reused idempotently by the next attempt.
+        """
+        now = time.time()
+        expected_owner = node_id if lease_owner is None else lease_owner
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            completed = False
+            try:
+                cursor = self._connection.execute(
+                    "UPDATE processing_tasks SET status='committing',updated_at=? "
+                    "WHERE id=? AND node_id=? AND lease_owner=? AND status='processing' "
+                    "AND lease_expires_at>?",
+                    (now_iso(), task_id, node_id, expected_owner, now),
+                )
+                if cursor.rowcount != 1:
+                    self._connection.rollback()
+                    yield None
+                    return
+
+                def finish(asset_id: str | None) -> bool:
+                    nonlocal completed
+                    result = self._connection.execute(
+                        "UPDATE processing_tasks SET status='ready',asset_id=?,error=NULL,"
+                        "lease_owner=NULL,lease_expires_at=NULL,updated_at=? "
+                        "WHERE id=? AND node_id=? AND lease_owner=? AND status='committing'",
+                        (asset_id, now_iso(), task_id, node_id, expected_owner),
+                    )
+                    completed = result.rowcount == 1
+                    if completed and asset_id is not None:
+                        self._connection.execute(
+                            "INSERT INTO processing_completion_outbox(task_id,asset_id,created_at) "
+                            "VALUES(?,?,?) ON CONFLICT(task_id) DO UPDATE SET "
+                            "asset_id=excluded.asset_id,created_at=excluded.created_at",
+                            (task_id, asset_id, now_iso()),
+                        )
+                    return completed
+
+                yield finish
+                if completed:
+                    self._connection.commit()
+                else:
+                    self._connection.rollback()
+            except BaseException:
+                self._connection.rollback()
+                raise
+
+    def pending_completion_outbox(self) -> list[tuple[str, str]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT task_id,asset_id FROM processing_completion_outbox ORDER BY created_at"
+            ).fetchall()
+        return [(str(row["task_id"]), str(row["asset_id"])) for row in rows]
+
+    def acknowledge_completion(self, task_id: str) -> bool:
         with self._lock, self._connection:
             cursor = self._connection.execute(
-                "UPDATE processing_tasks SET status='failed',error=?,updated_at=? "
-                "WHERE id=? AND node_id=? AND status='processing'",
-                (message[:500], now_iso(), task_id, node_id),
+                "DELETE FROM processing_completion_outbox WHERE task_id=?", (task_id,)
             )
-            row = self._connection.execute(
-                "SELECT original_path FROM processing_tasks WHERE id=? AND node_id=?",
-                (task_id, node_id),
+        return cursor.rowcount == 1
+
+    def fail_task(
+        self, task_id: str, node_id: str, message: str, lease_owner: str | None = None
+    ) -> bool:
+        """Allow a worker to release a failed lease and clean its scratch file."""
+        now = time.time()
+        expected_owner = node_id if lease_owner is None else lease_owner
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE processing_tasks SET status='failed',error=?,lease_owner=NULL,"
+                "lease_expires_at=NULL,updated_at=? WHERE id=? AND node_id=? "
+                "AND lease_owner=? AND ((status='processing' AND lease_expires_at>?) "
+                "OR status='committing') "
+                "RETURNING original_path",
+                (message[:500], now_iso(), task_id, node_id, expected_owner, now),
             ).fetchone()
-        if cursor.rowcount != 1 or row is None:
+        if cursor is None:
             return False
-        self._remove_incoming_path(str(row["original_path"]))
+        self._remove_incoming_path(str(cursor["original_path"]))
         return True
 
     def _remove_incoming_path(self, value: str) -> bool:
@@ -287,4 +409,5 @@ class RemoteProcessingStore:
             needs_review=bool(row["needs_review"]),
             status=str(row["status"]),
             node_id=None if row["node_id"] is None else str(row["node_id"]),
+            lease_owner=None if row["lease_owner"] is None else str(row["lease_owner"]),
         )

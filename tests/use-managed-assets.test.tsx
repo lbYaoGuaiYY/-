@@ -23,6 +23,10 @@ vi.mock("../src/features/assets/asset-service-client", () => ({
       `https://assets.example.test/${assetId}/${kind}?version=${version}`,
   ),
   subscribeToAssetEvents: vi.fn(() => () => undefined),
+  throwIfAssetRequestAborted: (signal: AbortSignal | undefined) => {
+    if (signal?.aborted !== true) return
+    throw signal.reason ?? new DOMException("The operation was aborted", "AbortError")
+  },
 }))
 vi.mock("../src/features/assets/cloud-asset-cache", () => ({
   CloudAssetCache: mocks.MockCloudAssetCache,
@@ -36,7 +40,10 @@ vi.mock("../src/features/assets/managed-asset-store", () => ({
   },
 }))
 
-import { useManagedAssets } from "../src/features/assets/use-managed-assets"
+import {
+  ASSET_SEARCH_DEBOUNCE_MS,
+  useManagedAssets,
+} from "../src/features/assets/use-managed-assets"
 
 const INITIAL_QUERY = { search: "", category: "" as const }
 
@@ -166,6 +173,78 @@ describe("useManagedAssets", () => {
     await flushAsyncWork()
     expect(result.current.isLoadingMore).toBe(false)
     expect(result.current.assets.map((item) => item.name)).toEqual(["second"])
+  })
+
+  it("aborts a superseded query before starting the latest page request", async () => {
+    vi.useFakeTimers()
+    const first = deferred<ReturnType<typeof page>>()
+    const second = deferred<ReturnType<typeof page>>()
+    mocks.listPage.mockImplementation(({ search }: { search: string }) => {
+      if (search === "first") return first.promise
+      if (search === "second") return second.promise
+      return Promise.resolve(page("initial"))
+    })
+
+    const { result, rerender } = renderHook(
+      ({ search }: { search: string }) => useManagedAssets({ search, category: "" }),
+      { initialProps: { search: "" } },
+    )
+    await flushAsyncWork()
+
+    rerender({ search: "first" })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ASSET_SEARCH_DEBOUNCE_MS)
+    })
+    expect(mocks.listPage).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "first" }),
+      expect.any(Object),
+    )
+    rerender({ search: "second" })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ASSET_SEARCH_DEBOUNCE_MS - 1)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    const firstCall = mocks.listPage.mock.calls.find((call) => call[0]?.search === "first") as
+      | [unknown, { signal: AbortSignal }]
+      | undefined
+    const secondCall = mocks.listPage.mock.calls.find((call) => call[0]?.search === "second") as
+      | [unknown, { signal: AbortSignal }]
+      | undefined
+    expect(firstCall?.[1].signal.aborted).toBe(true)
+    expect(secondCall?.[1].signal.aborted).toBe(false)
+
+    second.resolve(page("second"))
+    await flushAsyncWork()
+    first.resolve(page("first"))
+    await flushAsyncWork()
+    expect(result.current.assets.map((item) => item.name)).toEqual(["second"])
+  })
+
+  it("aborts the active first-page request on refresh and unmount", async () => {
+    const pending = deferred<ReturnType<typeof page>>()
+    mocks.listPage.mockReturnValue(pending.promise)
+    const { result, unmount } = renderHook(() => useManagedAssets(INITIAL_QUERY))
+    await flushAsyncWork()
+    const initialCall = mocks.listPage.mock.calls[0] as
+      | [unknown, { signal: AbortSignal }]
+      | undefined
+    expect(initialCall?.[1].signal.aborted).toBe(false)
+
+    act(() => result.current.refresh())
+    await flushAsyncWork()
+    expect(initialCall?.[1].signal.aborted).toBe(true)
+    const refreshedCall = mocks.listPage.mock.calls[1] as
+      | [unknown, { signal: AbortSignal }]
+      | undefined
+    expect(refreshedCall?.[1].signal.aborted).toBe(false)
+
+    unmount()
+    expect(refreshedCall?.[1].signal.aborted).toBe(true)
+    pending.resolve(page("stale"))
+    await flushAsyncWork()
   })
 })
 

@@ -52,8 +52,14 @@ class AssetWorker:
                 self._process(job)
             except Exception as error:  # noqa: BLE001
                 LOGGER.exception("Asset job failed: %s", job["job_id"])
-                self._catalog.fail_job(str(job["job_id"]), str(job["id"]), str(error))
-                self._notify("job.failed", str(job["id"]))
+                failed = self._catalog.fail_job(
+                    str(job["job_id"]),
+                    str(job["id"]),
+                    str(error),
+                    owner=str(job["owner"]),
+                )
+                if failed:
+                    self._notify("job.failed", str(job["id"]))
 
     def _process(self, job: dict[str, object]) -> None:
         asset_id = str(job["id"])
@@ -76,15 +82,23 @@ class AssetWorker:
             preview.thumbnail((480, 360), Image.Resampling.LANCZOS)
             thumb_temporary = thumbnail.with_suffix(".webp.tmp")
             preview.save(thumb_temporary, format="WEBP", quality=82, method=4)
+        if not self._catalog.renew_job_lease(
+            str(job["job_id"]), asset_id, str(job["owner"])
+        ):
+            temporary.unlink(missing_ok=True)
+            thumb_temporary.unlink(missing_ok=True)
+            return
         os.replace(temporary, processed)
         os.replace(thumb_temporary, thumbnail)
         category, classification_needs_review = self._classifier.classify(processed)
-        self._catalog.complete_job(
-            str(job["job_id"]), asset_id, status="ready", category=category,
+        completed = self._catalog.complete_job(
+            str(job["job_id"]), asset_id, owner=str(job["owner"]), status="ready", category=category,
             needs_review=int(quality.needs_review or classification_needs_review), width=width, height=height,
             processed_path=str(processed), thumbnail_path=str(thumbnail), dominant_color=dominant,
             tags=f'["{category}"]',
         )
+        if not completed:
+            return
         self._notify("asset.ready", asset_id)
 
     @staticmethod

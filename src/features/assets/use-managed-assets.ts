@@ -13,6 +13,7 @@ import {
   getServiceCatalogRevision,
   listServiceAssetPage,
   subscribeToAssetEvents,
+  throwIfAssetRequestAborted,
 } from "./asset-service-client"
 import { startVisibleCatalogPolling } from "./catalog-refresh-scheduler"
 import { CloudAssetCache } from "./cloud-asset-cache"
@@ -58,6 +59,7 @@ export function useManagedAssets(
   const activeFilter = useRef("")
   const cachedObjectUrls = useRef<ServiceAssetObjectUrlCache>(new Map())
   const activeObjectUrlKeys = useRef(new Set<string>())
+  const paginationControllerRef = useRef<AbortController | null>(null)
   useEffect(
     () => () => {
       revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
@@ -100,6 +102,8 @@ export function useManagedAssets(
     const requestQuery = queryKey
     const requestGeneration = ++requestGenerationRef.current
     if (!enabled) {
+      paginationControllerRef.current?.abort()
+      paginationControllerRef.current = null
       revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
       activeObjectUrlKeys.current.clear()
       setAssets([])
@@ -111,8 +115,11 @@ export function useManagedAssets(
     const filterChanged = activeFilter.current !== filterKey
     activeFilter.current = filterKey
     let active = true
+    const requestController = new AbortController()
     const fallbackUrls: string[] = []
     // A fresh first-page request supersedes any in-flight pagination request.
+    paginationControllerRef.current?.abort()
+    paginationControllerRef.current = null
     setIsLoadingMore(false)
     if (filterChanged) {
       revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
@@ -124,16 +131,22 @@ export function useManagedAssets(
     setStatus("loading")
     void (async () => {
       try {
-        const page = await listServiceAssetPage({
-          search: debouncedSearch,
-          category: query.category,
-          status: "ready",
-          needsReview: false,
-          limit: ASSET_PAGE_SIZE,
-          offset: 0,
-        })
+        const page = await listServiceAssetPage(
+          {
+            search: debouncedSearch,
+            category: query.category,
+            status: "ready",
+            needsReview: false,
+            limit: ASSET_PAGE_SIZE,
+            offset: 0,
+          },
+          { signal: requestController.signal },
+        )
+        throwIfAssetRequestAborted(requestController.signal)
         await saveCatalogBestEffort(page.assets)
+        throwIfAssetRequestAborted(requestController.signal)
         const cachedProcessed = await readProcessedBestEffort(page.assets)
+        throwIfAssetRequestAborted(requestController.signal)
         if (
           !active ||
           requestGeneration !== requestGenerationRef.current ||
@@ -155,6 +168,7 @@ export function useManagedAssets(
         setHasMore(page.hasMore)
         setStatus("ready")
       } catch (error) {
+        if (requestController.signal.aborted) return
         if (!(error instanceof Error)) throw error
         try {
           const cached = await cloudAssetCache.listCatalog({
@@ -164,6 +178,7 @@ export function useManagedAssets(
             offset: 0,
           })
           const cachedProcessed = await readProcessedBestEffort(cached.assets)
+          throwIfAssetRequestAborted(requestController.signal)
           if (
             !active ||
             requestGeneration !== requestGenerationRef.current ||
@@ -198,6 +213,7 @@ export function useManagedAssets(
             return
           }
           const legacy = await new ManagedAssetStore().list()
+          throwIfAssetRequestAborted(requestController.signal)
           if (
             !active ||
             requestGeneration !== requestGenerationRef.current ||
@@ -221,6 +237,7 @@ export function useManagedAssets(
           setAssets(urls.map(({ record, src }) => createManagedLibraryAsset(record, src)))
           setStatus(filtered.length === 0 ? "error" : "ready")
         } catch (fallbackError) {
+          if (requestController.signal.aborted) return
           if (!(fallbackError instanceof Error)) throw fallbackError
           if (
             active &&
@@ -233,6 +250,11 @@ export function useManagedAssets(
     })()
     return () => {
       active = false
+      requestController.abort()
+      if (paginationControllerRef.current !== null) {
+        paginationControllerRef.current.abort()
+        paginationControllerRef.current = null
+      }
       fallbackUrls.forEach((src) => {
         URL.revokeObjectURL(src)
       })
@@ -244,19 +266,28 @@ export function useManagedAssets(
     const requestQuery = queryKey
     const requestGeneration = requestGenerationRef.current
     const offset = assets.length
+    const requestController = new AbortController()
+    paginationControllerRef.current?.abort()
+    paginationControllerRef.current = requestController
     setIsLoadingMore(true)
     void (async () => {
       try {
-        const page = await listServiceAssetPage({
-          search: debouncedSearch,
-          category: query.category,
-          status: "ready",
-          needsReview: false,
-          limit: ASSET_PAGE_SIZE,
-          offset,
-        })
+        const page = await listServiceAssetPage(
+          {
+            search: debouncedSearch,
+            category: query.category,
+            status: "ready",
+            needsReview: false,
+            limit: ASSET_PAGE_SIZE,
+            offset,
+          },
+          { signal: requestController.signal },
+        )
+        throwIfAssetRequestAborted(requestController.signal)
         await saveCatalogBestEffort(page.assets)
+        throwIfAssetRequestAborted(requestController.signal)
         const cachedProcessed = await readProcessedBestEffort(page.assets)
+        throwIfAssetRequestAborted(requestController.signal)
         if (
           requestGeneration !== requestGenerationRef.current ||
           activeQuery.current !== requestQuery
@@ -277,6 +308,7 @@ export function useManagedAssets(
         catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
       } catch (error) {
+        if (requestController.signal.aborted) return
         if (!(error instanceof Error)) throw error
         if (
           requestGeneration === requestGenerationRef.current &&
@@ -284,6 +316,9 @@ export function useManagedAssets(
         )
           setStatus("error")
       } finally {
+        if (paginationControllerRef.current === requestController) {
+          paginationControllerRef.current = null
+        }
         if (
           requestGeneration === requestGenerationRef.current &&
           activeQuery.current === requestQuery

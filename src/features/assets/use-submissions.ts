@@ -168,8 +168,20 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
     let active = true
     let pollInFlight: Promise<void> | null = null
     let pollController: AbortController | null = null
+    let timer: number | null = null
+
+    const stopPolling = (): void => {
+      if (timer !== null) {
+        window.clearInterval(timer)
+        timer = null
+      }
+      pollController?.abort()
+      pollInFlight = null
+      pollController = null
+    }
 
     const poll = (): Promise<void> => {
+      if (!active || document.visibilityState !== "visible") return Promise.resolve()
       if (pollInFlight !== null) return pollInFlight
       pollController = new AbortController()
       const controller = pollController
@@ -254,14 +266,30 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
       )
       return request
     }
+
+    const startPolling = (): void => {
+      if (!active || document.visibilityState !== "visible" || timer !== null) return
+      timer = window.setInterval(() => void poll(), SUBMISSION_POLL_INTERVAL_MS)
+    }
+
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState !== "visible") {
+        stopPolling()
+        return
+      }
+      startPolling()
+      void poll()
+    }
+
     pollNowRef.current = poll
-    const timer = window.setInterval(() => void poll(), SUBMISSION_POLL_INTERVAL_MS)
+    if (document.visibilityState === "visible") startPolling()
+    window.addEventListener("focus", refreshWhenVisible)
+    document.addEventListener("visibilitychange", refreshWhenVisible)
     return () => {
       active = false
-      window.clearInterval(timer)
-      pollController?.abort()
-      pollInFlight = null
-      pollController = null
+      stopPolling()
+      window.removeEventListener("focus", refreshWhenVisible)
+      document.removeEventListener("visibilitychange", refreshWhenVisible)
       pollNowRef.current = () => Promise.resolve()
     }
   }, [updateSubmissions])

@@ -49,6 +49,32 @@ def _submission_headers(client: TestClient) -> dict[str, str]:
     }
 
 
+def test_health_is_liveness_and_ready_requires_ready_controls(tmp_path: Path) -> None:
+    settings = CloudSettings(
+        library_root=tmp_path,
+        editor_token="editor-secret",
+        admin_token="admin-secret",
+        allowed_origins=(),
+    )
+    client = TestClient(create_app(settings))
+
+    assert client.get("/api/v1/health").status_code == 200
+    assert client.get("/api/v1/ready").json() == {"status": "ready"}
+
+    controls_response = client.patch(
+        "/api/v1/admin/controls",
+        headers={"Authorization": "Bearer admin-secret"},
+        json={"maintenance_mode": True},
+    )
+    assert controls_response.status_code == 200, controls_response.text
+    assert client.get("/api/v1/health").json() == {"status": "maintenance"}
+
+    ready_response = client.get("/api/v1/ready")
+    assert ready_response.status_code == 503
+    assert ready_response.json()["detail"] == {"status": "maintenance"}
+    assert ready_response.headers["retry-after"] == "5"
+
+
 def test_processing_dashboard_orders_active_nodes_before_stale_records(tmp_path: Path) -> None:
     processing = RemoteProcessingStore(tmp_path)
     stale = processing.pair_node("旧 Mac", "macos")
@@ -251,7 +277,8 @@ def test_failed_processing_task_marks_submission_failed_and_cleans_incoming(tmp_
     )
     node_headers = {"Authorization": f"Bearer {registered.json()['token']}"}
     task = client.post("/api/v1/processing-nodes/poll", headers=node_headers).json()["task"]
-    incoming = tmp_path / "incoming" / f"{task['id']}.png"
+    raw_task_id = task["id"].partition(".")[0]
+    incoming = tmp_path / "incoming" / f"{raw_task_id}.png"
     assert incoming.exists()
     other = client.post(
         "/api/v1/processing-nodes/register",
@@ -363,9 +390,12 @@ def test_processing_result_requires_real_images_and_matching_dimensions(tmp_path
         files={"original": ("x.png", b"source", "image/png")},
     ).json()
     task_id = task["id"]
-    client.post("/api/v1/processing-nodes/poll", headers=node_headers)
+    task_handle = client.post("/api/v1/processing-nodes/poll", headers=node_headers).json()[
+        "task"
+    ]["id"]
+    assert task_handle.partition(".")[0] == task_id
     corrupt = client.post(
-        f"/api/v1/processing-tasks/{task_id}/complete",
+        f"/api/v1/processing-tasks/{task_handle}/complete",
         headers=node_headers,
         data={"metadata": json.dumps({"width": 4, "height": 3, "dominant_color": "#f05028"})},
         files={
@@ -375,7 +405,7 @@ def test_processing_result_requires_real_images_and_matching_dimensions(tmp_path
     )
     assert corrupt.status_code == 415
     mismatch = client.post(
-        f"/api/v1/processing-tasks/{task_id}/complete",
+        f"/api/v1/processing-tasks/{task_handle}/complete",
         headers=node_headers,
         data={"metadata": json.dumps({"width": 5, "height": 3, "dominant_color": "#f05028"})},
         files={
@@ -418,7 +448,7 @@ def test_processing_node_heartbeat_refreshes_liveness_without_claiming_task(tmp_
 
     claimed = client.post("/api/v1/processing-nodes/poll", headers=node_headers)
     assert claimed.status_code == 200, claimed.text
-    assert claimed.json()["task"]["id"] == task.json()["id"]
+    assert claimed.json()["task"]["id"].partition(".")[0] == task.json()["id"]
 
 
 def test_browser_login_grants_an_http_only_admin_session(tmp_path: Path) -> None:
@@ -666,12 +696,13 @@ def test_remote_processing_node_can_claim_and_complete_cloud_task(tmp_path: Path
 
     claim = client.post("/api/v1/processing-nodes/poll", headers=node_headers)
     assert claim.status_code == 200, claim.text
-    assert claim.json()["task"]["id"] == task_id
-    original = client.get(f"/api/v1/processing-tasks/{task_id}/original", headers=node_headers)
+    task_handle = claim.json()["task"]["id"]
+    assert task_handle.partition(".")[0] == task_id
+    original = client.get(f"/api/v1/processing-tasks/{task_handle}/original", headers=node_headers)
     assert original.content == b"original-image"
 
     completed = client.post(
-        f"/api/v1/processing-tasks/{task_id}/complete",
+        f"/api/v1/processing-tasks/{task_handle}/complete",
         headers=node_headers,
         data={"metadata": json.dumps({"width": 320, "height": 240, "dominant_color": "#ffffff"})},
         files={
@@ -785,9 +816,10 @@ def test_extension_run_upload_is_idempotent_and_tracks_processing_completion(
     ).json()
     node_headers = {"Authorization": f"Bearer {node['token']}"}
     claimed = client.post("/api/v1/processing-nodes/poll", headers=node_headers)
-    assert claimed.json()["task"]["id"] == task_id
+    task_handle = claimed.json()["task"]["id"]
+    assert task_handle.partition(".")[0] == task_id
     completed = client.post(
-        f"/api/v1/processing-tasks/{task_id}/complete",
+        f"/api/v1/processing-tasks/{task_handle}/complete",
         headers=node_headers,
         data={
             "metadata": json.dumps(
@@ -1415,3 +1447,68 @@ def test_maintenance_mode_pauses_catalog_but_keeps_health_and_admin_available(tm
         ).status_code
         == 200
     )
+
+
+def test_cloud_control_stores_refresh_shared_state_and_merge_patches(tmp_path: Path) -> None:
+    first = CloudControlsStore(tmp_path)
+    second = CloudControlsStore(tmp_path)
+
+    first.patch(CloudControlsPatch(maintenance_mode=True, max_concurrent_downloads=3))
+    assert second.maintenance_mode is True
+    assert second.health_status == "maintenance"
+
+    second.patch(CloudControlsPatch(maintenance_mode=False, downloads_enabled=False))
+    assert first.health_status == "degraded"
+    assert first.snapshot() == {
+        "maintenance_mode": False,
+        "downloads_enabled": False,
+        "max_concurrent_downloads": 3,
+        "active_downloads": 0,
+    }
+
+    first.patch(CloudControlsPatch(downloads_enabled=True))
+    assert second.health_status == "ready"
+    assert second.snapshot()["max_concurrent_downloads"] == 3
+
+
+def test_cloud_control_apps_refresh_shared_state_immediately(tmp_path: Path) -> None:
+    def settings() -> CloudSettings:
+        return CloudSettings(
+            library_root=tmp_path,
+            editor_token="editor-secret",
+            admin_token="admin-secret",
+            allowed_origins=(),
+        )
+
+    first = TestClient(create_app(settings()))
+    second = TestClient(create_app(settings()))
+    administrator = {"Authorization": "Bearer admin-secret"}
+
+    changed = first.patch(
+        "/api/v1/admin/controls",
+        headers=administrator,
+        json={"maintenance_mode": True, "max_concurrent_downloads": 3},
+    )
+    assert changed.status_code == 200, changed.text
+    assert second.get("/api/v1/health").json() == {"status": "maintenance"}
+    assert second.get("/api/v1/ready").status_code == 503
+
+    changed = second.patch(
+        "/api/v1/admin/controls",
+        headers=administrator,
+        json={"maintenance_mode": False, "downloads_enabled": False},
+    )
+    assert changed.status_code == 200, changed.text
+    assert first.get("/api/v1/health").json() == {"status": "degraded"}
+    assert first.get("/api/v1/ready").status_code == 503
+
+    changed = first.patch(
+        "/api/v1/admin/controls",
+        headers=administrator,
+        json={"downloads_enabled": True},
+    )
+    assert changed.status_code == 200, changed.text
+    assert second.get("/api/v1/ready").json() == {"status": "ready"}
+    assert second.get("/api/v1/admin/observability/summary", headers=administrator).json()[
+        "controls"
+    ]["max_concurrent_downloads"] == 3

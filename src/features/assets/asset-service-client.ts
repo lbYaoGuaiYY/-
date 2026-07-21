@@ -90,6 +90,17 @@ export type ServiceAssetPageQuery = {
   readonly offset: number
 }
 
+export type ServiceAssetRequestOptions = {
+  readonly signal?: AbortSignal
+}
+
+export function throwIfAssetRequestAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted !== true) return
+  const reason = signal.reason
+  if (reason !== undefined) throw reason
+  throw new DOMException("The operation was aborted", "AbortError")
+}
+
 export type ServiceAssetPage = {
   readonly assets: readonly ServiceAsset[]
   readonly hasMore: boolean
@@ -111,13 +122,22 @@ const cachedAssetPages = new Map<
   { readonly etag: string; readonly page: ServiceAssetPage }
 >()
 
-export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<ServiceAssetPage> {
+export function listServiceAssetPage(
+  query: ServiceAssetPageQuery,
+  options: ServiceAssetRequestOptions = {},
+): Promise<ServiceAssetPage> {
   const { search, category, status, needsReview, limit, offset } = query
+  const { signal } = options
   const requestKey = JSON.stringify([search, category, status, needsReview, limit, offset])
-  const pendingRequest = pendingAssetPages.get(requestKey)
-  if (pendingRequest !== undefined) return pendingRequest
+  // Requests with a caller-owned signal must remain independently abortable.
+  // The no-signal path retains the existing request coalescing behavior.
+  if (signal === undefined) {
+    const pendingRequest = pendingAssetPages.get(requestKey)
+    if (pendingRequest !== undefined) return pendingRequest
+  }
 
   const request = (async () => {
+    throwIfAssetRequestAborted(signal)
     const searchParams = new URLSearchParams({
       query: search,
       category,
@@ -133,7 +153,9 @@ export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<Serv
       // Preserve conditional 304 responses while allowing Ky to throw and
       // retry configured transient 5xx/429 responses before cache fallback.
       throwHttpErrors: (statusCode) => statusCode !== 304,
+      ...(signal === undefined ? {} : { signal }),
     })
+    throwIfAssetRequestAborted(signal)
     if (response.status === 304 && cached !== undefined) return cached.page
     if (!response.ok) throw new Error(`素材服务请求失败（HTTP ${response.status}）`)
     const payload = await response.json()
@@ -144,15 +166,22 @@ export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<Serv
       revision: response.headers.get("X-Catalog-Revision"),
     }
     const etag = response.headers.get("ETag")
+    throwIfAssetRequestAborted(signal)
     if (etag !== null) cachedAssetPages.set(requestKey, { etag, page })
     return page
   })()
 
-  pendingAssetPages.set(requestKey, request)
-  void request.then(
-    () => pendingAssetPages.delete(requestKey),
-    () => pendingAssetPages.delete(requestKey),
-  )
+  if (signal === undefined) {
+    pendingAssetPages.set(requestKey, request)
+    void request.then(
+      () => {
+        if (pendingAssetPages.get(requestKey) === request) pendingAssetPages.delete(requestKey)
+      },
+      () => {
+        if (pendingAssetPages.get(requestKey) === request) pendingAssetPages.delete(requestKey)
+      },
+    )
+  }
   return request
 }
 
