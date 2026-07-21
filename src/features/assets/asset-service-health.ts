@@ -13,12 +13,44 @@ export type AssetServiceHealth = {
   readonly serviceStatus: "degraded" | "maintenance" | "ready" | null
 }
 
-export async function readAssetServiceHealth(): Promise<AssetServiceHealth> {
+export type AssetServiceHealthTracker = {
+  readonly consecutiveFailures: number
+  readonly health: AssetServiceHealth | null
+}
+
+export const ASSET_SERVICE_OFFLINE_CONFIRMATIONS = 3
+
+export function stabilizeAssetServiceHealth(
+  current: AssetServiceHealthTracker,
+  sample: AssetServiceHealth,
+  offlineConfirmations = ASSET_SERVICE_OFFLINE_CONFIRMATIONS,
+): AssetServiceHealthTracker {
+  if (sample.connection !== "offline") {
+    return { consecutiveFailures: 0, health: sample }
+  }
+
+  const consecutiveFailures = current.consecutiveFailures + 1
+  if (consecutiveFailures >= Math.max(1, offlineConfirmations)) {
+    return { consecutiveFailures, health: sample }
+  }
+
+  return {
+    consecutiveFailures,
+    health: {
+      connection: "slow",
+      latencyMs: current.health?.latencyMs ?? null,
+      serviceStatus: current.health?.serviceStatus ?? null,
+    },
+  }
+}
+
+export async function readAssetServiceHealth(signal?: AbortSignal): Promise<AssetServiceHealth> {
   const startedAt = performance.now()
   try {
     const payload = HealthSchema.parse(
       await ky
         .get(`${ASSET_SERVICE_CONFIG.baseUrl}/health`, {
+          ...(signal === undefined ? {} : { signal }),
           retry: {
             limit: 1,
             methods: ["get"],

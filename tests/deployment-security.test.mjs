@@ -25,6 +25,8 @@ describe("asset cloud proxy boundary", () => {
     ])
 
     expect(caddyfile).toContain("header_up X-Qingshe-Client-IP {client_ip}")
+    expect(caddyfile).toContain("lb_try_duration 5s")
+    expect(caddyfile).toContain("lb_try_interval 250ms")
     expect(caddyfile).toContain("trusted_proxies_strict")
     expect(dockerfile).toContain('"--forwarded-allow-ips", "172.30.232.3"')
   })

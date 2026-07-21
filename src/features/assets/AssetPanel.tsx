@@ -2,7 +2,12 @@ import { ArrowClockwise, FilePlus, HardDrive, MagnifyingGlass, X } from "@phosph
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useEffect, useRef, useState } from "react"
 import type { LibraryAsset } from "./asset-library"
-import { type AssetServiceHealth, readAssetServiceHealth } from "./asset-service-health"
+import {
+  type AssetServiceHealth,
+  type AssetServiceHealthTracker,
+  readAssetServiceHealth,
+  stabilizeAssetServiceHealth,
+} from "./asset-service-health"
 import { DraggableAssetTile } from "./DraggableAssetTile"
 import { ASSET_CATEGORIES, type AssetCategory } from "./demo-assets"
 import { MySubmissionsList } from "./MySubmissionsList"
@@ -14,6 +19,7 @@ export type AssetPanelProps = {
   readonly assets: readonly LibraryAsset[]
   readonly category: AssetCategory | ""
   readonly hasMore: boolean
+  readonly healthPollingEnabled?: boolean
   readonly isLoadingMore: boolean
   readonly isRefreshing: boolean
   readonly onAddAsset: (asset: LibraryAsset) => void
@@ -27,10 +33,13 @@ export type AssetPanelProps = {
   readonly status: "loading" | "ready" | "error"
 }
 
+const ASSET_SERVICE_HEALTH_INTERVAL_MS = 10_000
+
 export function AssetPanel({
   assets,
   category,
   hasMore,
+  healthPollingEnabled = true,
   isLoadingMore,
   isRefreshing,
   onAddAsset,
@@ -45,6 +54,10 @@ export function AssetPanel({
 }: AssetPanelProps) {
   const gridRef = useRef<HTMLDivElement>(null)
   const [health, setHealth] = useState<AssetServiceHealth | null>(null)
+  const healthTrackerRef = useRef<AssetServiceHealthTracker>({
+    consecutiveFailures: 0,
+    health: null,
+  })
   const [submissionDialogOpen, setSubmissionDialogOpen] = useState(false)
   const [retrySubmission, setRetrySubmission] = useState<SubmissionDialogInitialValues | null>(null)
   const [activeView, setActiveView] = useState<"library" | "submissions">("library")
@@ -58,13 +71,41 @@ export function AssetPanel({
     setRetrySubmission(null)
   }
   useEffect(() => {
-    const refreshHealth = (): void => {
-      void readAssetServiceHealth().then(setHealth)
+    if (!healthPollingEnabled) return
+    let active = true
+    let running = false
+    let controller: AbortController | null = null
+    const refreshHealth = async (): Promise<void> => {
+      if (running || document.visibilityState !== "visible") return
+      running = true
+      const requestController = new AbortController()
+      controller = requestController
+      try {
+        const sample = await readAssetServiceHealth(requestController.signal)
+        if (!active) return
+        const next = stabilizeAssetServiceHealth(healthTrackerRef.current, sample)
+        healthTrackerRef.current = next
+        setHealth(next.health)
+      } finally {
+        if (controller === requestController) controller = null
+        running = false
+      }
     }
-    refreshHealth()
-    const timer = window.setInterval(refreshHealth, 30_000)
-    return () => window.clearInterval(timer)
-  }, [])
+    void refreshHealth()
+    const timer = window.setInterval(() => void refreshHealth(), ASSET_SERVICE_HEALTH_INTERVAL_MS)
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === "visible") void refreshHealth()
+    }
+    window.addEventListener("focus", refreshWhenVisible)
+    document.addEventListener("visibilitychange", refreshWhenVisible)
+    return () => {
+      active = false
+      controller?.abort()
+      window.clearInterval(timer)
+      window.removeEventListener("focus", refreshWhenVisible)
+      document.removeEventListener("visibilitychange", refreshWhenVisible)
+    }
+  }, [healthPollingEnabled])
   const assetVirtualizer = useVirtualizer({
     count: assets.length,
     estimateSize: () => 232,
@@ -81,13 +122,7 @@ export function AssetPanel({
           <h2 id="asset-panel-title">素材</h2>
           <span className="asset-panel__heading-actions">
             <span className={`asset-panel__connection is-${health?.connection ?? "checking"}`}>
-              {health === null
-                ? "检测中"
-                : health.connection === "online"
-                  ? "云素材在线"
-                  : health.connection === "slow"
-                    ? "云素材较慢"
-                    : "使用本地缓存"}
+              {assetServiceHealthLabel(health)}
             </span>
             <span className="asset-panel__count">{assets.length} 项</span>
             <button
@@ -316,4 +351,13 @@ export function AssetPanel({
       )}
     </aside>
   )
+}
+
+function assetServiceHealthLabel(health: AssetServiceHealth | null): string {
+  if (health === null) return "检测云服务"
+  if (health.serviceStatus === "maintenance") return "云服务维护中"
+  if (health.serviceStatus === "degraded") return "云服务降级"
+  if (health.connection === "online") return "云服务在线"
+  if (health.connection === "slow") return "云服务连接波动"
+  return "云服务暂不可用"
 }

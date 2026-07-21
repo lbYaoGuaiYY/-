@@ -69,18 +69,19 @@ export function useManagedAssets(
     setStatus("loading")
     setRevision((current) => current + 1)
   }, [])
-  const refreshIfCatalogChanged = useCallback(() => {
-    void getServiceCatalogRevision()
-      .then((nextRevision) => {
-        if (
-          catalogRevisionRef.current === null ||
-          catalogRevisionRef.current !== String(nextRevision)
-        ) {
-          refresh()
-        }
-      })
-      .catch(() => refresh())
-  }, [refresh])
+  const refreshIfCatalogChanged = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      const nextRevision = await getServiceCatalogRevision(signal)
+      if (signal?.aborted) return
+      if (
+        catalogRevisionRef.current === null ||
+        catalogRevisionRef.current !== String(nextRevision)
+      ) {
+        refresh()
+      }
+    },
+    [refresh],
+  )
 
   useEffect(() => {
     if (query.search === debouncedSearch) return
@@ -307,20 +308,32 @@ export function useManagedAssets(
   }, [enabled, refresh])
   useEffect(() => {
     if (!enabled) return
-    const refreshWhenEditorReturns = (): void => {
-      if (document.visibilityState === "visible") refreshIfCatalogChanged()
+    const controller = new AbortController()
+    let revisionRunning = false
+    const checkCatalogRevision = async (): Promise<void> => {
+      if (revisionRunning) return
+      revisionRunning = true
+      try {
+        await refreshIfCatalogChanged(controller.signal)
+      } finally {
+        revisionRunning = false
+      }
     }
+    const refreshWhenEditorReturns = (): void => {
+      if (document.visibilityState === "visible") {
+        void checkCatalogRevision().catch(() => undefined)
+      }
+    }
+    const stopPolling = startVisibleCatalogPolling(checkCatalogRevision)
     window.addEventListener("focus", refreshWhenEditorReturns)
     document.addEventListener("visibilitychange", refreshWhenEditorReturns)
     return () => {
+      controller.abort()
+      stopPolling()
       window.removeEventListener("focus", refreshWhenEditorReturns)
       document.removeEventListener("visibilitychange", refreshWhenEditorReturns)
     }
   }, [enabled, refreshIfCatalogChanged])
-  useEffect(
-    () => (enabled ? startVisibleCatalogPolling(refreshIfCatalogChanged) : undefined),
-    [enabled, refreshIfCatalogChanged],
-  )
   return { assets, hasMore, isLoadingMore, loadMore, refresh, status }
 }
 

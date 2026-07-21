@@ -30,4 +30,27 @@ describe("visible catalog polling", () => {
     expect(check).not.toHaveBeenCalled()
     stop()
   })
+
+  it("backs off after failures and recovers from a synchronous throw", async () => {
+    vi.useFakeTimers()
+    const check = vi
+      .fn<() => void | Promise<void>>()
+      .mockImplementationOnce(() => {
+        throw new Error("offline")
+      })
+      .mockResolvedValue(undefined)
+
+    const stop = startVisibleCatalogPolling(check, 5_000, 20_000)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(check).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(check).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(check).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(check).toHaveBeenCalledTimes(3)
+    stop()
+  })
 })

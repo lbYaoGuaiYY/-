@@ -432,6 +432,7 @@ export function App({ projectId }: AppProps) {
                 assets={assetLibrary.assets}
                 category={assetLibrary.category}
                 hasMore={assetLibrary.hasMore}
+                healthPollingEnabled={panels.assetsOpen}
                 isLoadingMore={assetLibrary.isLoadingMore}
                 isRefreshing={assetLibrary.status === "loading"}
                 onAddAsset={addLibraryAsset}

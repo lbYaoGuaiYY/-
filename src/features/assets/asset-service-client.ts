@@ -42,10 +42,9 @@ const JobsResponseSchema = z.object({ jobs: z.array(ServiceJobSchema) })
 const CatalogRevisionResponseSchema = z.object({ revision: z.number().int().nonnegative() })
 const AssetEventPayloadSchema = z.object({ assetId: z.string().uuid() })
 const ASSET_READ_RETRY = {
-  // The editor has an application-managed offline cache. Waiting through
-  // repeated network retries makes that fallback feel broken, so foreground
-  // reads fail fast and the user can retry explicitly from the panel.
-  limit: 0,
+  // One short retry absorbs transient edge/upstream failures while the
+  // application-managed cache remains the bounded fallback.
+  limit: 1,
   methods: ["get"],
   statusCodes: [408, 425, 429, 500, 502, 503, 504],
 }
@@ -131,7 +130,9 @@ export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<Serv
     const response = await client.get("assets", {
       ...(cached === undefined ? {} : { headers: { "If-None-Match": cached.etag } }),
       searchParams,
-      throwHttpErrors: false,
+      // Preserve conditional 304 responses while allowing Ky to throw and
+      // retry configured transient 5xx/429 responses before cache fallback.
+      throwHttpErrors: (statusCode) => statusCode !== 304,
     })
     if (response.status === 304 && cached !== undefined) return cached.page
     if (!response.ok) throw new Error(`素材服务请求失败（HTTP ${response.status}）`)
@@ -155,8 +156,10 @@ export function listServiceAssetPage(query: ServiceAssetPageQuery): Promise<Serv
   return request
 }
 
-export async function getServiceCatalogRevision(): Promise<number> {
-  const payload = await client.get("catalog/revision").json()
+export async function getServiceCatalogRevision(signal?: AbortSignal): Promise<number> {
+  const payload = await client
+    .get("catalog/revision", signal === undefined ? {} : { signal })
+    .json()
   return CatalogRevisionResponseSchema.parse(payload).revision
 }
 

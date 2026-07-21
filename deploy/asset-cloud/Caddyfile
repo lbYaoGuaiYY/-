@@ -35,6 +35,11 @@ assets.xiduoduo.top {
 	encode zstd gzip
 
 	reverse_proxy qingshe-assets:7000 {
+		# Hold idempotent reads through the brief upstream replacement window
+		# instead of exposing a connection-refused 502 during deployments.
+		lb_try_duration 5s
+		lb_try_interval 250ms
+
 		# Forward only Caddy's trusted-proxy result. This overwrites any
 		# client-supplied value before the API applies anonymous quotas.
 		header_up X-Qingshe-Client-IP {client_ip}
