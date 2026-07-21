@@ -15,6 +15,7 @@ import {
   OfflineAssetPackageSection,
   type PackageDownloadProgress,
 } from "./OfflineAssetPackageSection"
+import { useModalFocus } from "./use-modal-focus"
 
 type OfflineAssetManagerProps = {
   readonly variant?: "modal" | "panel"
@@ -33,12 +34,14 @@ export function OfflineAssetManager({
   variant = "modal",
 }: OfflineAssetManagerProps) {
   const cacheRef = useRef<CloudAssetCache | null>(null)
+  const dialogRef = useRef<HTMLElement>(null)
   if (cacheRef.current === null) cacheRef.current = new CloudAssetCache()
   const [state, setState] = useState<OfflineAssetManagerState>({ kind: "loading" })
   const [progress, setProgress] = useState<PackageDownloadProgress | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const projectIds = useMemo(() => new Set(projectAssetIds), [projectAssetIds])
+  useModalFocus(dialogRef, onClose)
 
   const load = useCallback(async (): Promise<void> => {
     setState({ kind: "loading" })
@@ -150,10 +153,13 @@ export function OfflineAssetManager({
   return (
     <div className={`offline-asset-manager__backdrop is-${variant}`}>
       <section
+        ref={dialogRef}
         className={`offline-asset-manager is-${variant}`}
+        data-dialog-initial-focus={variant === "modal" ? true : undefined}
         role="dialog"
         aria-modal={variant === "modal"}
         aria-labelledby="offline-asset-manager-title"
+        tabIndex={variant === "modal" ? -1 : undefined}
       >
         <header className="offline-asset-manager__header">
           <div>

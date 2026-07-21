@@ -1,3 +1,5 @@
+import { QINGSHE_RELEASE_VERSION } from "../../platform/build-info"
+
 export type AssetClientPlatform = "ios" | "macos" | "web" | "windows"
 
 export type AssetClientIdentity = {
@@ -29,7 +31,7 @@ export function getAssetClientIdentity(
   return {
     id,
     platform: detectAssetClientPlatform(),
-    version: import.meta.env.VITE_APP_VERSION?.trim() || "0.1.0",
+    version: import.meta.env.VITE_APP_VERSION?.trim() || QINGSHE_RELEASE_VERSION,
   }
 }
 

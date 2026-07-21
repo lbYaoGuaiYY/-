@@ -192,6 +192,9 @@ class ProcessingAgentApp:
                 configuration = ensure_processor_configuration(
                     default_processor_configuration_path(),
                     base_url=configured_base_url if configured_base_url else DEFAULT_PROCESSING_URL,
+                    registration_token=os.environ.get(
+                        "QINGSHE_PROCESSING_REGISTRATION_TOKEN"
+                    ),
                     status_callback=self._emit_status,
                 )
             run_agent(

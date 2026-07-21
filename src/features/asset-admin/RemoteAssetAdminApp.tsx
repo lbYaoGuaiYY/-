@@ -5,6 +5,7 @@ import {
   DownloadSimple,
   Laptop,
   Play,
+  SignOut,
   UploadSimple,
   X,
 } from "@phosphor-icons/react"
@@ -23,11 +24,12 @@ import {
   extensionPairingRequested,
   isRemoteAdminAuthError,
   loginRemoteAssetAdmin,
+  logoutRemoteAssetAdmin,
   pairRemoteExtensionDevice,
   processingAgentDownloadUrl,
   processingNodePlatformLabel,
+  type RemotePendingReviewAsset,
   type RemoteProcessingDashboard,
-  type RemoteProcessingTask,
   readRemoteProcessingDashboard,
   selectLocalProcessingNode,
 } from "./remote-processing-client"
@@ -38,6 +40,13 @@ type StagedExtensionFile = {
   readonly id: string
   readonly file: File
   readonly preview: string
+}
+
+type ReviewItem = {
+  readonly reviewKey: string
+  readonly asset_id: string
+  readonly name: string
+  readonly category: string
 }
 
 function fileFromExtensionMessage(value: unknown): StagedExtensionFile | null {
@@ -248,9 +257,8 @@ export function RemoteAssetAdminApp() {
     }
   }
 
-  async function confirmReview(task: RemoteProcessingTask): Promise<void> {
-    if (task.asset_id === null) return
-    const category = reviewCategories[task.id] ?? readTaskCategory(task.category)
+  async function confirmReview(task: ReviewItem): Promise<void> {
+    const category = reviewCategories[task.reviewKey] ?? readTaskCategory(task.category)
     setBusy(true)
     try {
       await approveRemoteAsset(task.asset_id, category)
@@ -291,6 +299,20 @@ export function RemoteAssetAdminApp() {
     window.location.href = buildProcessorLaunchUrl(processorClientId)
   }
 
+  async function logout(): Promise<void> {
+    setBusy(true)
+    try {
+      await logoutRemoteAssetAdmin()
+      setAuthMessage("已退出登录")
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? `退出登录失败：${error.message}` : "退出登录失败")
+    } finally {
+      setDashboard(null)
+      setAuthState("signed-out")
+      setBusy(false)
+    }
+  }
+
   if (authState !== "signed-in") {
     return (
       <AssetAdminLogin
@@ -302,11 +324,30 @@ export function RemoteAssetAdminApp() {
   }
 
   const taskSummary = splitProcessingTasks(dashboard?.tasks ?? [])
-  const reviewTasks =
-    dashboard?.tasks.filter(
-      (task) => task.status === "ready" && task.asset_id !== null && task.needs_review,
-    ) ?? []
-  const readyAssets = dashboard?.tasks.filter((task) => task.asset_id !== null).length ?? 0
+  const reviewTaskItems: ReviewItem[] =
+    dashboard?.tasks
+      .filter((task) => task.status === "ready" && task.asset_id !== null && task.needs_review)
+      .map((task) => ({
+        reviewKey: task.id,
+        asset_id: task.asset_id as string,
+        name: task.name,
+        category: task.category,
+      })) ?? []
+  const pendingReviewItems: ReviewItem[] =
+    dashboard?.pending_review_assets.map((asset: RemotePendingReviewAsset) => ({
+      reviewKey: `asset:${asset.id}`,
+      asset_id: asset.id,
+      name: asset.name,
+      category: asset.category,
+    })) ?? []
+  const reviewTasks = [...reviewTaskItems, ...pendingReviewItems].filter(
+    (item, index, items) =>
+      items.findIndex((candidate) => candidate.asset_id === item.asset_id) === index,
+  )
+  const readyAssets = new Set([
+    ...(dashboard?.tasks.flatMap((task) => (task.asset_id === null ? [] : [task.asset_id])) ?? []),
+    ...(dashboard?.pending_review_assets.map((asset) => asset.id) ?? []),
+  ]).size
   const processingNodes = dashboard?.nodes ?? []
   const onlineProcessingNodes = processingNodes.filter((node) => node.status === "online")
   const localProcessorIsOnline = localProcessor?.status === "online"
@@ -334,6 +375,16 @@ export function RemoteAssetAdminApp() {
             onClick={() => void refresh()}
           >
             <ArrowClockwise size={18} aria-hidden="true" />
+          </button>
+          <button
+            className="material-panel__icon-button"
+            type="button"
+            title="退出登录"
+            aria-label="退出登录"
+            disabled={busy}
+            onClick={() => void logout()}
+          >
+            <SignOut size={18} aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -577,9 +628,9 @@ export function RemoteAssetAdminApp() {
             ) : (
               reviewTasks.map((task) => {
                 const selectedCategory =
-                  reviewCategories[task.id] ?? readTaskCategory(task.category)
+                  reviewCategories[task.reviewKey] ?? readTaskCategory(task.category)
                 return (
-                  <div className="material-panel__review-row" key={task.id}>
+                  <div className="material-panel__review-row" key={task.reviewKey}>
                     <span>
                       <strong>{task.name}</strong>
                       <small>当前分类：{task.category}</small>
@@ -593,7 +644,7 @@ export function RemoteAssetAdminApp() {
                           const nextCategory = readTaskCategory(event.currentTarget.value)
                           setReviewCategories((current) => ({
                             ...current,
-                            [task.id]: nextCategory,
+                            [task.reviewKey]: nextCategory,
                           }))
                         }}
                       >

@@ -1,8 +1,9 @@
 import { DownloadSimple, ShareNetwork, X } from "@phosphor-icons/react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import type { ExportImageFormat } from "./fabric-runtime"
 import { shareOrDownloadImage } from "./image-export"
+import { useModalFocus } from "./use-modal-focus"
 
 export function ImageExportSheet({
   blob,
@@ -14,6 +15,8 @@ export function ImageExportSheet({
   readonly onClose: () => void
 }) {
   const [isDelivering, setIsDelivering] = useState(false)
+  const panelRef = useRef<HTMLElement>(null)
+  useModalFocus(panelRef, onClose)
   const extension = format === "jpeg" ? "jpg" : "png"
   const filename = `轻设设计-${new Date().toISOString().slice(0, 10)}.${extension}`
 
@@ -30,10 +33,13 @@ export function ImageExportSheet({
   return (
     <div className="image-export-sheet__backdrop" role="presentation">
       <section
+        ref={panelRef}
         className="image-export-sheet"
+        data-dialog-initial-focus
         role="dialog"
         aria-modal="true"
         aria-labelledby="image-export-sheet-title"
+        tabIndex={-1}
       >
         <header>
           <div>

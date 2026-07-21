@@ -189,6 +189,45 @@ class RemoteProcessingStore:
             )
         return cursor.rowcount == 1
 
+    def fail_task(self, task_id: str, node_id: str, message: str) -> bool:
+        """Allow a worker to release a failed lease and clean its scratch file."""
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE processing_tasks SET status='failed',error=?,updated_at=? "
+                "WHERE id=? AND node_id=? AND status='processing'",
+                (message[:500], now_iso(), task_id, node_id),
+            )
+            row = self._connection.execute(
+                "SELECT original_path FROM processing_tasks WHERE id=? AND node_id=?",
+                (task_id, node_id),
+            ).fetchone()
+        if cursor.rowcount != 1 or row is None:
+            return False
+        self._remove_incoming_path(str(row["original_path"]))
+        return True
+
+    def _remove_incoming_path(self, value: str) -> bool:
+        candidate = Path(value).resolve()
+        incoming = self._incoming.resolve()
+        if incoming not in candidate.parents or not candidate.is_file():
+            return False
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def remove_task_original(self, task_id: str, node_id: str | None = None) -> bool:
+        """Delete only a task's temporary incoming file after cataloging it."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT original_path,node_id FROM processing_tasks WHERE id=?",
+                (task_id,),
+            ).fetchone()
+        if row is None or (node_id is not None and str(row["node_id"]) != node_id):
+            return False
+        return self._remove_incoming_path(str(row["original_path"]))
+
     def resolve_asset_review(self, asset_id: str, category: str | None = None) -> bool:
         with self._lock, self._connection:
             if category is None:

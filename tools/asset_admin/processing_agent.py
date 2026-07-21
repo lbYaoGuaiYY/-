@@ -131,8 +131,18 @@ def register_processor_node(
     *,
     name: str | None = None,
     platform_name: str | None = None,
+    registration_token: str | None = None,
 ) -> ProcessorConfiguration:
     """Register this machine with the cloud and return a durable node token."""
+    enrollment_token = (
+        registration_token
+        if registration_token is not None
+        else os.environ.get("QINGSHE_PROCESSING_REGISTRATION_TOKEN", "")
+    ).strip()
+    if enrollment_token == "":
+        raise RuntimeError(
+            "未配置 QINGSHE_PROCESSING_REGISTRATION_TOKEN，无法注册处理节点"
+        )
     payload = json.dumps(
         {
             "name": (name or platform.node() or "轻抠").strip() or "轻抠",
@@ -146,6 +156,7 @@ def register_processor_node(
         headers={
             "Content-Type": "application/json",
             "User-Agent": "QingsheProcessingNode/1.0",
+            "X-Qingshe-Processing-Registration-Token": enrollment_token,
         },
     )
     with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
@@ -161,6 +172,7 @@ def ensure_processor_configuration(
     *,
     base_url: str = DEFAULT_PROCESSING_URL,
     status_callback: Callable[[str, str], None] | None = None,
+    registration_token: str | None = None,
 ) -> ProcessorConfiguration:
     """Load an existing node token or auto-register a new one."""
     report = status_callback or (lambda _state, _detail: None)
@@ -168,7 +180,9 @@ def ensure_processor_configuration(
     if configuration is not None:
         return configuration
     report("connecting", "正在向云端上报这台轻抠…")
-    configuration = register_processor_node(base_url)
+    configuration = register_processor_node(
+        base_url, registration_token=registration_token
+    )
     save_processor_configuration(path, configuration)
     LOGGER.info("本地抠图节点已自动注册到云端")
     return configuration
@@ -248,6 +262,19 @@ def request_bytes(
                 raise
             time.sleep(attempt + 1)
     raise RuntimeError("处理节点请求重试失败")
+
+
+def report_task_failure(base_url: str, token: str, task_id: str, error: str) -> None:
+    """Best-effort failure callback so the cloud can close a processing lease."""
+    body = json.dumps({"error": error[:500]}, ensure_ascii=False).encode("utf-8")
+    request_bytes(
+        base_url,
+        f"/processing-tasks/{task_id}/fail",
+        token,
+        method="POST",
+        body=body,
+        headers={"Content-Type": "application/json", **processor_panel_headers()},
+    )
 
 
 def multipart_result(result: ProcessingResult) -> tuple[bytes, str]:
@@ -340,6 +367,7 @@ def run_agent(
     report("ready", "已连接，正在等待抠图任务")
     session: object | None = None
     while not stopped.is_set():
+        active_task_id: str | None = None
         try:
             payload = json.loads(
                 request_bytes(
@@ -360,6 +388,7 @@ def run_agent(
                 stopped.wait(POLL_SECONDS)
                 continue
             task_id = str(task["id"])
+            active_task_id = task_id
             LOGGER.info("开始本地抠图任务 %s：%s", task_id, task["name"])
             report("processing", f"正在处理：{task['name']}")
             original = request_bytes(base_url, f"/processing-tasks/{task_id}/original", token)
@@ -383,10 +412,20 @@ def run_agent(
             completed(str(task["name"]))
             report("ready", f"已完成：{task['name']}")
         except urllib.error.HTTPError as error:
+            if active_task_id is not None:
+                try:
+                    report_task_failure(base_url, token, active_task_id, "云端处理请求失败")
+                except Exception:  # noqa: BLE001
+                    LOGGER.debug("处理任务失败回报未送达", exc_info=True)
             LOGGER.error("云端处理节点请求失败（HTTP %s）", error.code)
             report("error", f"连接失败（HTTP {error.code}），正在重试")
             stopped.wait(POLL_SECONDS)
         except Exception:  # noqa: BLE001
+            if active_task_id is not None:
+                try:
+                    report_task_failure(base_url, token, active_task_id, "本地处理失败")
+                except Exception:  # noqa: BLE001
+                    LOGGER.debug("处理任务失败回报未送达", exc_info=True)
             LOGGER.exception("本地抠图任务失败")
             report("error", "处理失败，正在自动重试")
             stopped.wait(POLL_SECONDS)

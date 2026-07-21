@@ -29,6 +29,24 @@ export type LibraryAsset = {
   readonly source: BuiltInAssetSource | ManagedAssetSource
 }
 
+export type ServiceAssetObjectUrlCache = Map<string, string>
+
+export function serviceAssetVersionKey(asset: Pick<ServiceAsset, "id" | "version">): string {
+  return `${asset.id}@${asset.version}`
+}
+
+/** Revoke cached Blob URLs that are no longer represented by the rendered catalog. */
+export function revokeUnusedServiceAssetObjectUrls(
+  cache: ServiceAssetObjectUrlCache,
+  activeKeys: ReadonlySet<string>,
+): void {
+  for (const [key, url] of cache) {
+    if (activeKeys.has(key)) continue
+    URL.revokeObjectURL(url)
+    cache.delete(key)
+  }
+}
+
 export const BUILT_IN_LIBRARY_ASSETS: readonly LibraryAsset[] = DEMO_ASSETS.map((asset) => ({
   id: asset.id,
   assetId: createAssetId(`built-in:${asset.id}`),
@@ -63,9 +81,18 @@ export function createManagedLibraryAsset(record: ManagedAssetRecord, src: strin
   }
 }
 
-export function createServiceLibraryAsset(asset: ServiceAsset, processedBlob?: Blob): LibraryAsset {
+export function createServiceLibraryAsset(
+  asset: ServiceAsset,
+  processedBlob?: Blob,
+  objectUrlCache?: ServiceAssetObjectUrlCache,
+): LibraryAsset {
   const processedUrl = serviceAssetMediaUrl(asset.id, "processed", asset.version)
-  const sourceUrl = processedBlob === undefined ? processedUrl : URL.createObjectURL(processedBlob)
+  const cacheKey = serviceAssetVersionKey(asset)
+  let sourceUrl = processedUrl
+  if (processedBlob !== undefined) {
+    sourceUrl = objectUrlCache?.get(cacheKey) ?? URL.createObjectURL(processedBlob)
+    objectUrlCache?.set(cacheKey, sourceUrl)
+  }
   return {
     id: asset.id,
     assetId: createAssetId(`local:catalog:${asset.id}`),

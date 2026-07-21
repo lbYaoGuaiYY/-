@@ -43,6 +43,10 @@ expect(() => createAssetServiceConfig({
 })).toThrow("生产素材服务必须使用 https://xiduoduo.top")
 ```
 
+The historical token-based admin client described below is deprecated. The
+asset-admin panel now uses the HttpOnly SameSite session cookie from
+`/api/v1/auth/login`; no admin token is compiled into its bundle.
+
 ```js
 expect(editorEnv).toContain(
   "VITE_ASSET_SERVICE_URL=https://assets.xiduoduo.top/api/v1",
@@ -258,7 +262,7 @@ export type CloudControlsPatch = Partial<Pick<CloudControls,
 >>
 ```
 
-Admin Token 只从 `VITE_ASSET_CLOUD_ADMIN_TOKEN` 读取，该模块只被 `asset-admin-main.tsx` 的依赖图引用。
+> 2026-07-21 安全更新：本步骤中的前端 Admin Token 方案已废弃。公开素材管理端不得读取或打包 `VITE_ASSET_CLOUD_ADMIN_TOKEN`；所有管理请求必须使用 `/auth/login` 签发的 HttpOnly、SameSite 会话 Cookie。
 
 - [ ] **Step 4: 验证与提交**
 

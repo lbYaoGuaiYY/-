@@ -440,6 +440,7 @@ export function App({ projectId }: AppProps) {
                 onOpenOfflineAssets={() => setOfflineAssetsOpen(true)}
                 onQueryChange={assetLibrary.setQuery}
                 onRefresh={assetLibrary.refresh}
+                onSubmissionApproved={assetLibrary.refresh}
                 query={assetLibrary.query}
                 status={assetLibrary.status}
               />

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": 1,
+  "productName": "轻设",
+  "version": "0.1.0",
+  "source": {
+    "entry": "src/main.tsx",
+    "runtimes": ["web", "windows", "macos", "ipados"],
+    "revisionEnv": "QINGSHE_BUILD_REVISION"
+  },
+  "artifacts": {
+    "windows": "qingshe-windows-{version}-{arch}.exe",
+    "macos": "qingshe-macos-{version}-{arch}.dmg",
+    "linux": "qingshe-linux-{version}-{arch}.AppImage",
+    "ios": "qingshe-ios-{version}-{arch}.app"
+  },
+  "browserExtension": {
+    "manifest": "browser-extension/manifest.json",
+    "chrome": "qingshe-image-archive-{version}-chrome.zip",
+    "firefox": "qingshe-image-archive-{version}-firefox.xpi"
+  },
+  "downloadArchitectures": {
+    "macos": "aarch64"
+  }
+}

@@ -1,6 +1,8 @@
 import { access, readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 
+import { cargoPackageVersion, readReleaseManifest } from "./release-manifest.mjs"
+
 const root = resolve(process.cwd())
 
 async function readJson(path) {
@@ -16,20 +18,46 @@ function assert(condition, message) {
 }
 
 export async function checkProductBoundaries({ artifacts = false } = {}) {
-  const [manifest, packageJson, tauriConfig, processorConfig, processorCapability, cargo] =
-    await Promise.all([
-      readJson("config/product-surfaces.json"),
-      readJson("package.json"),
-      readJson("src-tauri/tauri.conf.json"),
-      readJson("src-tauri/tauri.processor.conf.json"),
-      readJson("src-tauri/capabilities/processor.json"),
-      readFile(resolve(root, "src-tauri/Cargo.toml"), "utf8"),
-    ])
+  const [
+    manifest,
+    releaseManifest,
+    packageJson,
+    tauriConfig,
+    macosConfig,
+    iosConfig,
+    processorConfig,
+    processorCapability,
+    cargo,
+  ] = await Promise.all([
+    readJson("config/product-surfaces.json"),
+    readReleaseManifest(root),
+    readJson("package.json"),
+    readJson("src-tauri/tauri.conf.json"),
+    readJson("src-tauri/tauri.macos.conf.json"),
+    readJson("src-tauri/tauri.ios.conf.json"),
+    readJson("src-tauri/tauri.processor.conf.json"),
+    readJson("src-tauri/capabilities/processor.json"),
+    readFile(resolve(root, "src-tauri/Cargo.toml"), "utf8"),
+  ])
 
   for (const surface of [manifest.editor, manifest.assetPanel, manifest.processor]) {
     await Promise.all([requireFile(surface.html), requireFile(surface.entry)])
   }
   await requireFile(manifest.browserExtension.root)
+
+  assert(releaseManifest.source.entry === manifest.editor.entry, "发布源必须指向唯一 App 入口")
+  assert(
+    JSON.stringify(releaseManifest.source.runtimes) === JSON.stringify(manifest.editor.runtimes),
+    "发布源运行时必须覆盖 Web、Windows、macOS、iPadOS",
+  )
+  assert(
+    releaseManifest.productName === tauriConfig.productName,
+    "Release manifest productName must match Tauri productName",
+  )
+  assert(
+    tauriConfig.app?.windows?.[0]?.title === releaseManifest.productName,
+    "Tauri main window title must match release manifest productName",
+  )
 
   assert(manifest.editor.entry === "src/main.tsx", "轻设 App 必须只有 src/main.tsx 一个业务入口")
   assert(
@@ -50,6 +78,30 @@ export async function checkProductBoundaries({ artifacts = false } = {}) {
     "Tauri 开发未统一调用 App 开发入口",
   )
   assert(packageJson.version === tauriConfig.version, "package.json 与轻设 Tauri 版本不一致")
+  assert(
+    packageJson.version === releaseManifest.version,
+    "package.json version must match release manifest",
+  )
+  assert(
+    tauriConfig.version === releaseManifest.version,
+    "Tauri version must match release manifest",
+  )
+  assert(
+    cargoPackageVersion(cargo) === releaseManifest.version,
+    "Cargo package version must match release manifest",
+  )
+  assert(
+    macosConfig.bundle?.targets?.join(",") === "app,dmg",
+    "macOS must produce app and dmg bundles",
+  )
+  assert(
+    iosConfig.bundle?.iOS?.minimumSystemVersion === "15.0",
+    "iPadOS minimum version must stay 15.0",
+  )
+  assert(
+    packageJson.scripts["app:ios:build"]?.includes("finalize-ios-app-build.mjs"),
+    "iPadOS build must finalize a versioned provenance artifact",
+  )
   assert(
     packageJson.scripts["app:desktop:build"]?.includes("finalize-desktop-app-build.mjs"),
     "轻设桌面包未输出到独立 dist-app 目录",

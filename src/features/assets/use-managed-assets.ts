@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { LibraryAsset } from "./asset-library"
-import { createManagedLibraryAsset, createServiceLibraryAsset } from "./asset-library"
+import {
+  createManagedLibraryAsset,
+  createServiceLibraryAsset,
+  revokeUnusedServiceAssetObjectUrls,
+  type ServiceAssetObjectUrlCache,
+  serviceAssetVersionKey,
+} from "./asset-library"
 import {
   ASSET_PAGE_SIZE,
   getServiceCatalogRevision,
@@ -47,11 +53,12 @@ export function useManagedAssets(
   const catalogRevisionRef = useRef<string | null>(null)
   const activeQuery = useRef("")
   const activeFilter = useRef("")
-  const cachedObjectUrls = useRef(new Set<string>())
+  const cachedObjectUrls = useRef<ServiceAssetObjectUrlCache>(new Map())
+  const activeObjectUrlKeys = useRef(new Set<string>())
   useEffect(
     () => () => {
-      for (const url of cachedObjectUrls.current) URL.revokeObjectURL(url)
-      cachedObjectUrls.current.clear()
+      revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
+      activeObjectUrlKeys.current.clear()
     },
     [],
   )
@@ -78,6 +85,8 @@ export function useManagedAssets(
 
   useEffect(() => {
     if (!enabled) {
+      revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
+      activeObjectUrlKeys.current.clear()
       setAssets([])
       setHasMore(false)
       setIsLoadingMore(false)
@@ -90,6 +99,8 @@ export function useManagedAssets(
     const requestQuery = queryKey
     const fallbackUrls: string[] = []
     if (filterChanged) {
+      revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
+      activeObjectUrlKeys.current.clear()
       setAssets([])
       setHasMore(false)
       setIsLoadingMore(false)
@@ -108,9 +119,17 @@ export function useManagedAssets(
         await cloudAssetCache.saveCatalog(page.assets)
         const cachedProcessed = await cloudAssetCache.readProcessed(page.assets)
         if (!active || activeQuery.current !== requestQuery) return
-        setAssets(
-          createServiceLibraryAssets(page.assets, cachedProcessed, cachedObjectUrls.current),
+        const nextAssets = createServiceLibraryAssets(
+          page.assets,
+          cachedProcessed,
+          cachedObjectUrls.current,
         )
+        const nextKeys = new Set(
+          page.assets.filter((asset) => cachedProcessed.has(asset.id)).map(serviceAssetVersionKey),
+        )
+        revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, nextKeys)
+        activeObjectUrlKeys.current = nextKeys
+        setAssets(nextAssets)
         catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
         setStatus("ready")
@@ -124,12 +143,25 @@ export function useManagedAssets(
             offset: 0,
           })
           const cachedProcessed = await cloudAssetCache.readProcessed(cached.assets)
-          if (cached.assets.length > 0) {
+          const offlineAssets = createOfflineServiceLibraryAssets(
+            cached.assets,
+            cachedProcessed,
+            cachedObjectUrls.current,
+          )
+          if (offlineAssets.length > 0) {
             if (!active || activeQuery.current !== requestQuery) return
-            setAssets(
-              createServiceLibraryAssets(cached.assets, cachedProcessed, cachedObjectUrls.current),
+            const nextKeys = new Set(
+              cached.assets
+                .filter((asset) => cachedProcessed.has(asset.id))
+                .map(serviceAssetVersionKey),
             )
-            setHasMore(cached.hasMore)
+            revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, nextKeys)
+            activeObjectUrlKeys.current = nextKeys
+            setAssets(offlineAssets)
+            // Catalog metadata alone is not an offline asset. Only entries
+            // with a locally cached processed blob are usable while the
+            // service is unreachable, so there is no remote page to load.
+            setHasMore(false)
             setStatus("ready")
             return
           }
@@ -147,6 +179,8 @@ export function useManagedAssets(
             src: URL.createObjectURL(record.blob),
           }))
           fallbackUrls.push(...urls.map(({ src }) => src))
+          revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
+          activeObjectUrlKeys.current.clear()
           setAssets(urls.map(({ record, src }) => createManagedLibraryAsset(record, src)))
           setStatus(filtered.length === 0 ? "error" : "ready")
         } catch (fallbackError) {
@@ -181,10 +215,18 @@ export function useManagedAssets(
         await cloudAssetCache.saveCatalog(page.assets)
         const cachedProcessed = await cloudAssetCache.readProcessed(page.assets)
         if (activeQuery.current !== requestQuery) return
-        setAssets((current) => [
-          ...current,
-          ...createServiceLibraryAssets(page.assets, cachedProcessed, cachedObjectUrls.current),
-        ])
+        const nextAssets = createServiceLibraryAssets(
+          page.assets,
+          cachedProcessed,
+          cachedObjectUrls.current,
+        )
+        const nextKeys = new Set(activeObjectUrlKeys.current)
+        for (const asset of page.assets) {
+          if (cachedProcessed.has(asset.id)) nextKeys.add(serviceAssetVersionKey(asset))
+        }
+        revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, nextKeys)
+        activeObjectUrlKeys.current = nextKeys
+        setAssets((current) => [...current, ...nextAssets])
         catalogRevisionRef.current = page.revision
         setHasMore(page.hasMore)
       } catch (error) {
@@ -231,12 +273,27 @@ export function useManagedAssets(
 function createServiceLibraryAssets(
   assets: readonly Parameters<typeof createServiceLibraryAsset>[0][],
   cachedProcessed: ReadonlyMap<string, Blob>,
-  objectUrls: Set<string>,
+  objectUrls: ServiceAssetObjectUrlCache,
 ): readonly LibraryAsset[] {
   return assets.map((asset) => {
     const cached = cachedProcessed.get(asset.id)
-    const libraryAsset = createServiceLibraryAsset(asset, cached)
-    if (cached !== undefined) objectUrls.add(libraryAsset.src)
-    return libraryAsset
+    return createServiceLibraryAsset(asset, cached, objectUrls)
   })
+}
+
+export function createOfflineServiceLibraryAssets(
+  assets: readonly Parameters<typeof createServiceLibraryAsset>[0][],
+  cachedProcessed: ReadonlyMap<string, Blob>,
+  objectUrls: ServiceAssetObjectUrlCache | Set<string>,
+): readonly LibraryAsset[] {
+  const cache = objectUrls instanceof Map ? objectUrls : new Map<string, string>()
+  const result = createServiceLibraryAssets(
+    assets.filter((asset) => cachedProcessed.has(asset.id)),
+    cachedProcessed,
+    cache,
+  )
+  if (objectUrls instanceof Set) {
+    for (const asset of result) objectUrls.add(asset.src)
+  }
+  return result
 }

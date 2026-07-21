@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 export type EditorViewport = "desktop" | "tablet" | "phone"
 export type RightPanelMode = "closed" | "layers" | "properties" | "both"
+export const EDITOR_DESKTOP_MIN_WIDTH = 1180
+export const EDITOR_PHONE_MAX_WIDTH = 699
 
 type PanelSnapshot = {
   readonly assetsOpen: boolean
@@ -18,8 +20,8 @@ export function useEditorPanels() {
   const snapshot = useRef<PanelSnapshot>({ assetsOpen, rightPanel })
 
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 1280px)")
-    const phone = window.matchMedia("(max-width: 699px)")
+    const desktop = window.matchMedia(`(min-width: ${EDITOR_DESKTOP_MIN_WIDTH}px)`)
+    const phone = window.matchMedia(`(max-width: ${EDITOR_PHONE_MAX_WIDTH}px)`)
     const update = (): void =>
       setViewport(desktop.matches ? "desktop" : phone.matches ? "phone" : "tablet")
     desktop.addEventListener("change", update)
@@ -134,6 +136,11 @@ export function useEditorPanels() {
 }
 
 function readViewport(): EditorViewport {
-  if (window.matchMedia("(min-width: 1280px)").matches) return "desktop"
-  return window.matchMedia("(max-width: 699px)").matches ? "phone" : "tablet"
+  if (window.matchMedia(`(min-width: ${EDITOR_DESKTOP_MIN_WIDTH}px)`).matches) return "desktop"
+  return window.matchMedia(`(max-width: ${EDITOR_PHONE_MAX_WIDTH}px)`).matches ? "phone" : "tablet"
+}
+
+export function editorViewportForWidth(width: number): EditorViewport {
+  if (width >= EDITOR_DESKTOP_MIN_WIDTH) return "desktop"
+  return width <= EDITOR_PHONE_MAX_WIDTH ? "phone" : "tablet"
 }

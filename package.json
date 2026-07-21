@@ -21,7 +21,7 @@
     "app:ios:init": "tauri ios init && pnpm app:ios:sync",
     "app:ios:sync": "node scripts/prepare-ios-project.mjs",
     "app:ios:dev": "pnpm app:ios:sync && PATH=\"$PWD/scripts:$PATH\" QINGSHE_IOS_MIN_VERSION=15.0 tauri ios dev --open",
-    "app:ios:build": "pnpm app:ios:sync && PATH=\"$PWD/scripts:$PATH\" QINGSHE_IOS_MIN_VERSION=15.0 tauri ios build --debug --target aarch64-sim --no-sign",
+    "app:ios:build": "pnpm app:ios:sync && PATH=\"$PWD/scripts:$PATH\" QINGSHE_IOS_MIN_VERSION=15.0 tauri ios build --debug --target aarch64-sim --no-sign && node scripts/finalize-ios-app-build.mjs",
     "asset-panel:dev": "vite --mode asset-admin",
     "asset-panel:build": "pnpm extension:build && tsc --noEmit && vite build --mode asset-admin && node scripts/finalize-asset-admin-build.mjs",
     "processor:web:dev": "vite --mode processor --port 4176",

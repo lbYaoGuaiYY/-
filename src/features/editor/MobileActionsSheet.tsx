@@ -1,8 +1,9 @@
 import { DownloadSimple, FileArrowDown, FileArrowUp, PencilSimple, X } from "@phosphor-icons/react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { qingsheBuildLabel } from "../../platform/build-info"
 import type { ExportImageFormat } from "./fabric-runtime"
+import { useModalFocus } from "./use-modal-focus"
 
 export type MobileActionsSheetProps = {
   readonly canExport: boolean
@@ -26,6 +27,8 @@ export function MobileActionsSheet({
   onRenameProject,
 }: MobileActionsSheetProps) {
   const [draftName, setDraftName] = useState(projectName)
+  const panelRef = useRef<HTMLElement>(null)
+  useModalFocus(panelRef, onClose)
 
   function commitProjectName(): void {
     const normalized = draftName.trim()
@@ -47,9 +50,15 @@ export function MobileActionsSheet({
         className="mobile-actions-sheet__backdrop"
         type="button"
         aria-label="关闭更多编辑操作"
+        tabIndex={-1}
         onClick={onClose}
       />
-      <section className="mobile-actions-sheet__panel">
+      <section
+        ref={panelRef}
+        className="mobile-actions-sheet__panel"
+        data-dialog-initial-focus
+        tabIndex={-1}
+      >
         <header className="panel-header">
           <h2 className="panel-title" id="mobile-actions-title">
             更多编辑操作

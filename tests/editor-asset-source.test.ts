@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createServiceLibraryAsset, type LibraryAsset } from "../src/features/assets/asset-library"
+import {
+  createServiceLibraryAsset,
+  type LibraryAsset,
+  revokeUnusedServiceAssetObjectUrls,
+} from "../src/features/assets/asset-library"
+import type { ServiceAsset } from "../src/features/assets/asset-service-client"
 import { selectEditorAssetSource } from "../src/features/assets/use-editor-asset-library"
 import { createAssetId } from "../src/features/editor/editor-model"
 
@@ -87,5 +92,40 @@ describe("editor asset source", () => {
     expect(asset.src).toBe("blob:cached-material")
     expect(asset.thumbnailSrc).toBe("blob:cached-material")
     expect(asset.source.kind === "managed" && asset.source.localAsset?.blob).toBe(cached)
+  })
+
+  it("reuses a cached Blob URL per asset version and revokes stale versions", () => {
+    const createUrl = vi.spyOn(URL, "createObjectURL")
+    const revokeUrl = vi.spyOn(URL, "revokeObjectURL")
+    createUrl.mockReturnValueOnce("blob:version-1").mockReturnValueOnce("blob:version-2")
+    const cache = new Map<string, string>()
+    const asset: ServiceAsset = {
+      id: "00000000-0000-4000-8000-000000000001",
+      code: "QS-000001",
+      name: "缓存素材",
+      category: "花艺",
+      status: "ready",
+      mime_type: "image/png",
+      width: 1,
+      height: 1,
+      version: 1,
+      needs_review: false,
+      favorite: false,
+      dominant_color: null,
+      tags: [],
+      usage_count: 0,
+      created_at: "2026-07-13T00:00:00+00:00",
+      updated_at: "2026-07-13T00:00:00+00:00",
+    } as const
+    const blob = new Blob(["cached"], { type: "image/png" })
+
+    expect(createServiceLibraryAsset(asset, blob, cache).src).toBe("blob:version-1")
+    expect(createServiceLibraryAsset(asset, blob, cache).src).toBe("blob:version-1")
+    const nextAsset = createServiceLibraryAsset({ ...asset, version: 2 }, blob, cache)
+    expect(nextAsset.src).toBe("blob:version-2")
+
+    revokeUnusedServiceAssetObjectUrls(cache, new Set([`${asset.id}@2`]))
+    expect(revokeUrl).toHaveBeenCalledWith("blob:version-1")
+    expect(cache).toEqual(new Map([[`${asset.id}@2`, "blob:version-2"]]))
   })
 })

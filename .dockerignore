@@ -1,0 +1,12 @@
+.git
+.env*
+**/.env
+**/.env.local
+**/.admin-credentials
+**/__pycache__
+**/*.pyc
+node_modules
+src-tauri/target
+deploy/asset-cloud/.venv
+test-results
+playwright-report

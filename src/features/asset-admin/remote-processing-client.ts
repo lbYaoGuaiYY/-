@@ -22,6 +22,24 @@ const TaskSchema = z.object({
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
 })
+const PendingReviewAssetSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  category: z.string(),
+  status: z.string(),
+  mime_type: z.string(),
+  width: z.number().int(),
+  height: z.number().int(),
+  version: z.number().int(),
+  needs_review: z.union([z.boolean(), z.number()]).transform(Boolean),
+  favorite: z.union([z.boolean(), z.number()]).transform(Boolean),
+  dominant_color: z.string().nullable(),
+  tags: z.array(z.string()),
+  usage_count: z.number().int().nonnegative(),
+  created_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
+})
 const ExtensionDeviceSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -68,6 +86,7 @@ const AutomationRunSchema = z.object({
 const DashboardSchema = z.object({
   nodes: z.array(NodeSchema),
   tasks: z.array(TaskSchema),
+  pending_review_assets: z.array(PendingReviewAssetSchema).default([]),
   extension_devices: z.array(ExtensionDeviceSchema).default([]),
   automation_runs: z.array(AutomationRunSchema).default([]),
 })
@@ -79,6 +98,7 @@ const CLOUD_READ_RETRY = {
 
 export type RemoteProcessingDashboard = z.infer<typeof DashboardSchema>
 export type RemoteProcessingTask = RemoteProcessingDashboard["tasks"][number]
+export type RemotePendingReviewAsset = RemoteProcessingDashboard["pending_review_assets"][number]
 export type RemoteProcessingNode = RemoteProcessingDashboard["nodes"][number]
 
 const PROCESSOR_CLIENT_STORAGE_KEY = "qingshe.processor.panel-client.v1"
@@ -137,11 +157,9 @@ function cloudBaseUrl(): string {
 
 function client() {
   const baseUrl = cloudBaseUrl()
-  const adminToken = import.meta.env.VITE_ASSET_CLOUD_ADMIN_TOKEN?.trim() ?? ""
   if (baseUrl === "") throw new Error("云端素材地址尚未配置")
   return ky.create({
     prefix: `${baseUrl}/`,
-    headers: adminToken === "" ? {} : { Authorization: `Bearer ${adminToken}` },
     credentials: "include",
     timeout: 60_000,
     retry: CLOUD_READ_RETRY,
@@ -153,6 +171,15 @@ export async function loginRemoteAssetAdmin(username: string, password: string):
   if (baseUrl === "") throw new Error("云端素材地址尚未配置")
   await ky.post(`${baseUrl}/auth/login`, {
     json: { username, password },
+    credentials: "include",
+    retry: 0,
+  })
+}
+
+export async function logoutRemoteAssetAdmin(): Promise<void> {
+  const baseUrl = cloudBaseUrl()
+  if (baseUrl === "") throw new Error("云端素材地址尚未配置")
+  await ky.post(`${baseUrl}/auth/logout`, {
     credentials: "include",
     retry: 0,
   })

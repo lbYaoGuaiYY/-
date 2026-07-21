@@ -15,6 +15,7 @@ for unit in xiduoduo-site.service xiduoduo-site-https.service; do
 done
 
 cd /opt/qingshe-assets/deploy/asset-cloud
+sh ./create-runtime-env.sh
 docker compose config --quiet
 docker compose pull caddy
 docker compose up -d --build --remove-orphans

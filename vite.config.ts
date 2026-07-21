@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import productSurfaces from "./config/product-surfaces.json" with { type: "json" }
-import packageMetadata from "./package.json" with { type: "json" }
+import releaseManifest from "./config/release-manifest.json" with { type: "json" }
 
 export default defineConfig(({ mode }) => {
   const isAssetAdminBuild = mode === productSurfaces.assetPanel.mode
@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
       __QINGSHE_BUILD__: JSON.stringify({
         revision,
         surface: activeSurface.name,
-        version: packageMetadata.version,
+        version: releaseManifest.version,
       }),
     },
     build: {
@@ -102,17 +102,12 @@ export default defineConfig(({ mode }) => {
 function readBuildRevision(): string {
   const { GITHUB_SHA: githubRevision, QINGSHE_BUILD_REVISION: suppliedRevision } = process.env
   const supplied = suppliedRevision ?? githubRevision
-  if (supplied?.trim()) return supplied.trim().slice(0, 12)
+  if (supplied?.trim()) return supplied.trim().slice(0, 40)
   try {
-    const revision = execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim()
-    const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=normal"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim()
-    return dirty ? `${revision}-dirty` : revision
   } catch {
     return "source"
   }

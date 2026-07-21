@@ -22,7 +22,10 @@ import {
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 
+import extensionManifest from "../browser-extension/manifest.json" with { type: "json" }
+import releaseManifest from "../config/release-manifest.json" with { type: "json" }
 import floralAsset from "./features/assets/media/burgundy-autumn-floral.png"
+import { QINGSHE_BUILD_INFO } from "./platform/build-info"
 import "./styles/product.css"
 
 type ManualSection = {
@@ -43,6 +46,19 @@ type DownloadItem = {
   action: string
   available: boolean
 }
+
+const macArtifactName = releaseManifest.artifacts.macos
+  .replaceAll("{version}", QINGSHE_BUILD_INFO.version)
+  .replaceAll("{arch}", releaseManifest.downloadArchitectures.macos)
+const chromeArtifactName = releaseManifest.browserExtension.chrome.replaceAll(
+  "{version}",
+  extensionManifest.version,
+)
+const firefoxArtifactName = releaseManifest.browserExtension.firefox.replaceAll(
+  "{version}",
+  extensionManifest.version,
+)
+const buildRevisionQuery = encodeURIComponent(QINGSHE_BUILD_INFO.revision)
 
 const manualSections: ManualSection[] = [
   { id: "quick-start", title: "快速开始", summary: "从导入底图到第一次导出的完整路径" },
@@ -71,7 +87,7 @@ const downloads: DownloadItem[] = [
     title: "轻设桌面版",
     description: "同一套编辑核心，在 Mac 上保持完整图层与项目能力。",
     meta: "macOS 12+ · Apple silicon",
-    href: "/downloads/qingshe-macos-0.1.0-aarch64.dmg",
+    href: `/downloads/${macArtifactName}?rev=${buildRevisionQuery}`,
     action: "下载 macOS 安装包",
     available: true,
   },
@@ -90,11 +106,11 @@ const downloads: DownloadItem[] = [
     platform: "Browser",
     title: "轻设浏览器插件",
     description: "轻设配套：从 AI 网页收集图片，发送到云素材面板。",
-    meta: "Chrome / Edge + Firefox · 0.2.0",
+    meta: `Chrome / Edge + Firefox · ${extensionManifest.version}`,
     action: "下载 Chrome / Edge",
-    href: "/admin/downloads/qingshe-image-archive-chrome.zip?rev=20260720",
+    href: `/admin/downloads/${chromeArtifactName}?rev=${buildRevisionQuery}`,
     secondaryAction: "下载 Firefox",
-    secondaryHref: "/admin/downloads/qingshe-image-archive-firefox.xpi?rev=20260720",
+    secondaryHref: `/admin/downloads/${firefoxArtifactName}?rev=${buildRevisionQuery}`,
     available: true,
   },
 ]

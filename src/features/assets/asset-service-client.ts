@@ -42,7 +42,10 @@ const JobsResponseSchema = z.object({ jobs: z.array(ServiceJobSchema) })
 const CatalogRevisionResponseSchema = z.object({ revision: z.number().int().nonnegative() })
 const AssetEventPayloadSchema = z.object({ assetId: z.string().uuid() })
 const ASSET_READ_RETRY = {
-  limit: 2,
+  // The editor has an application-managed offline cache. Waiting through
+  // repeated network retries makes that fallback feel broken, so foreground
+  // reads fail fast and the user can retry explicitly from the panel.
+  limit: 0,
   methods: ["get"],
   statusCodes: [408, 425, 429, 500, 502, 503, 504],
 }
@@ -100,7 +103,7 @@ const client = ky.create({
     ...createAssetServiceHeaders(ASSET_SERVICE_CONFIG),
     ...createAssetClientHeaders(getAssetClientIdentity()),
   },
-  timeout: 30_000,
+  timeout: 8_000,
   retry: ASSET_READ_RETRY,
 })
 const pendingAssetPages = new Map<string, Promise<ServiceAssetPage>>()

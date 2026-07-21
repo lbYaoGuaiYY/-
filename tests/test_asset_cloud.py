@@ -1,15 +1,52 @@
 import json
 import base64
 import hashlib
+import sqlite3
+from io import BytesIO
 from pathlib import Path
 from threading import Event, Thread
 from urllib.parse import unquote
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from tools.asset_admin.cloud_server import CloudSettings, create_app, load_settings
 from tools.asset_admin.cloud_controls import CloudControlsPatch, CloudControlsStore
 from tools.asset_admin.remote_processing import RemoteProcessingStore
+
+
+def _real_image_bytes(format_name: str = "PNG", size: tuple[int, int] = (4, 3)) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", size, (240, 80, 40)).save(buffer, format=format_name)
+    return buffer.getvalue()
+
+
+def _submission_client(tmp_path: Path) -> TestClient:
+    return TestClient(
+        create_app(
+            CloudSettings(
+                library_root=tmp_path,
+                editor_token="editor-secret",
+                admin_token="admin-secret",
+                allowed_origins=(),
+                submission_token="submission-secret",
+                processing_registration_token="registration-secret",
+            )
+        )
+    )
+
+
+SUBMISSION_CLIENT_ID = "8f03cde7-3d26-4a41-a245-42fb6a358e81"
+
+
+def _submission_headers(client: TestClient) -> dict[str, str]:
+    identity = {"X-Qingshe-Client": SUBMISSION_CLIENT_ID}
+    session = client.post("/api/v1/submission-sessions", headers=identity)
+    assert session.status_code == 201, session.text
+    return {
+        **identity,
+        "Authorization": f"Bearer {session.json()['upload_token']}",
+    }
 
 
 def test_processing_dashboard_orders_active_nodes_before_stale_records(tmp_path: Path) -> None:
@@ -35,11 +72,13 @@ def test_processing_node_can_self_register_without_admin_token(tmp_path: Path) -
         editor_token="editor-secret",
         admin_token="admin-secret",
         allowed_origins=(),
+        processing_registration_token="registration-secret",
     )
     client = TestClient(create_app(settings))
 
     registered = client.post(
         "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "registration-secret"},
         json={"name": "这台 Mac", "platform": "macos"},
     )
     assert registered.status_code == 201, registered.text
@@ -59,7 +98,250 @@ def test_processing_node_can_self_register_without_admin_token(tmp_path: Path) -
     assert dashboard.json()["nodes"][0]["status"] == "online"
 
 
-def test_processing_node_heartbeat_refreshes_liveness_without_claiming_task(tmp_path: Path) -> None:
+def test_processing_registration_requires_dedicated_token(tmp_path: Path) -> None:
+    settings = CloudSettings(
+        library_root=tmp_path,
+        editor_token="editor-secret",
+        admin_token="admin-secret",
+        allowed_origins=(),
+        processing_registration_token="registration-secret",
+    )
+    client = TestClient(create_app(settings))
+    payload = {"name": "node", "platform": "linux"}
+    assert client.post("/api/v1/processing-nodes/register", json=payload).status_code == 401
+    assert client.post(
+        "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "admin-secret"},
+        json=payload,
+    ).status_code == 403
+    assert client.post(
+        "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "registration-secret"},
+        json=payload,
+    ).status_code == 201
+
+
+def test_processing_registration_is_disabled_when_token_unconfigured(tmp_path: Path) -> None:
+    settings = CloudSettings(
+        library_root=tmp_path,
+        editor_token="editor-secret",
+        admin_token="admin-secret",
+        allowed_origins=(),
+    )
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "anything"},
+        json={"name": "node", "platform": "linux"},
+    )
+    assert response.status_code == 503
+
+
+def test_submission_rejects_mismatched_mime_corrupt_and_oversized_images(tmp_path: Path) -> None:
+    client = _submission_client(tmp_path)
+    headers = _submission_headers(client)
+    metadata = {"name": "safe", "mode": "review", "idempotency_key": "img-1"}
+    mismatched = client.post(
+        "/api/v1/submissions",
+        headers=headers,
+        data={"metadata": json.dumps(metadata)},
+        files={"original": ("x.jpg", _real_image_bytes(), "image/jpeg")},
+    )
+    assert mismatched.status_code == 415
+    corrupt = client.post(
+        "/api/v1/submissions",
+        headers=headers,
+        data={"metadata": json.dumps({**metadata, "idempotency_key": "img-2"})},
+        files={"original": ("x.png", b"\x89PNG\r\n\x1a\ntruncated", "image/png")},
+    )
+    assert corrupt.status_code == 415
+    huge = _real_image_bytes(size=(7000, 7000))
+    too_many_pixels = client.post(
+        "/api/v1/submissions",
+        headers=headers,
+        data={"metadata": json.dumps({**metadata, "idempotency_key": "img-3"})},
+        files={"original": ("x.png", huge, "image/png")},
+    )
+    assert too_many_pixels.status_code == 415
+
+
+def test_submission_idempotency_conflict_does_not_reveal_existing_token(tmp_path: Path) -> None:
+    client = _submission_client(tmp_path)
+    headers = _submission_headers(client)
+    image = _real_image_bytes()
+    first = client.post(
+        "/api/v1/submissions",
+        headers=headers,
+        data={"metadata": json.dumps({"name": "one", "mode": "review", "idempotency_key": "same"})},
+        files={"original": ("x.png", image, "image/png")},
+    )
+    assert first.status_code == 201, first.text
+    conflict = client.post(
+        "/api/v1/submissions",
+        headers=headers,
+        data={"metadata": json.dumps({"name": "two", "mode": "review", "idempotency_key": "same"})},
+        files={"original": ("x.png", image, "image/png")},
+    )
+    assert conflict.status_code == 409
+    assert "status_token" not in conflict.text
+    retry = client.post(
+        "/api/v1/submissions",
+        headers=headers,
+        data={"metadata": json.dumps({"name": "one", "mode": "review", "idempotency_key": "same"})},
+        files={"original": ("x.png", image, "image/png")},
+    )
+    assert retry.status_code == 200
+    assert retry.json()["submission_id"] == first.json()["submission_id"]
+    assert client.get(
+        f"/api/v1/submissions/{first.json()['submission_id']}",
+        headers={"Authorization": f"Bearer {first.json()['status_token']}"},
+    ).status_code == 200
+
+
+def test_submission_status_requires_bearer_and_approval_controls_visibility(tmp_path: Path) -> None:
+    client = _submission_client(tmp_path)
+    submission = client.post(
+        "/api/v1/submissions",
+        headers=_submission_headers(client),
+        data={"metadata": json.dumps({"name": "review", "mode": "review", "idempotency_key": "review-1"})},
+        files={"original": ("x.png", _real_image_bytes(), "image/png")},
+    )
+    assert submission.status_code == 201, submission.text
+    body = submission.json()
+    status_url = f"/api/v1/submissions/{body['submission_id']}"
+    assert client.get(status_url).status_code == 404
+    status_response = client.get(
+        status_url, headers={"Authorization": f"Bearer {body['status_token']}"}
+    )
+    assert status_response.status_code == 200
+    asset_id = body["asset_id"]
+    assert client.get(
+        f"/api/v1/assets/{asset_id}/original",
+        headers={"Authorization": "Bearer editor-secret"},
+    ).status_code == 404
+    approved = client.patch(
+        f"/api/v1/admin/assets/{asset_id}",
+        headers={"Authorization": "Bearer admin-secret"},
+        json={"needs_review": False, "category": "其他"},
+    )
+    assert approved.status_code == 200
+    assert client.get(
+        f"/api/v1/assets/{asset_id}/original",
+        headers={"Authorization": "Bearer editor-secret"},
+    ).status_code == 200
+
+    submissions_db = sqlite3.connect(tmp_path / "submissions.db")
+    columns = [row[1] for row in submissions_db.execute("PRAGMA table_info(submissions)")]
+    assert "status_token" not in columns
+    assert "status_token_hash" in columns
+
+
+def test_failed_processing_task_marks_submission_failed_and_cleans_incoming(tmp_path: Path) -> None:
+    client = _submission_client(tmp_path)
+    receipt = client.post(
+        "/api/v1/submissions",
+        headers=_submission_headers(client),
+        data={"metadata": json.dumps({"name": "cutout", "mode": "cutout", "idempotency_key": "fail-1"})},
+        files={"original": ("x.png", _real_image_bytes(), "image/png")},
+    ).json()
+    registered = client.post(
+        "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "registration-secret"},
+        json={"name": "worker", "platform": "linux"},
+    )
+    node_headers = {"Authorization": f"Bearer {registered.json()['token']}"}
+    task = client.post("/api/v1/processing-nodes/poll", headers=node_headers).json()["task"]
+    incoming = tmp_path / "incoming" / f"{task['id']}.png"
+    assert incoming.exists()
+    other = client.post(
+        "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "registration-secret"},
+        json={"name": "other-worker", "platform": "linux"},
+    )
+    wrong_headers = {"Authorization": f"Bearer {other.json()['token']}"}
+    assert client.post(
+        f"/api/v1/processing-tasks/{task['id']}/fail",
+        headers=wrong_headers,
+        json={"error": "wrong owner"},
+    ).status_code == 404
+    failed = client.post(
+        f"/api/v1/processing-tasks/{task['id']}/fail",
+        headers=node_headers,
+        json={"error": "worker decode failed"},
+    )
+    assert failed.status_code == 200
+    assert not incoming.exists()
+    status_response = client.get(
+        f"/api/v1/submissions/{receipt['submission_id']}",
+        headers={"Authorization": f"Bearer {receipt['status_token']}"},
+    )
+    assert status_response.json()["status"] == "failed"
+    assert status_response.json()["error"] == "投稿处理失败"
+
+
+def test_approved_legacy_duplicate_stays_public_for_cutout_and_review(tmp_path: Path) -> None:
+    client = _submission_client(tmp_path)
+    original = _real_image_bytes()
+    legacy = client.post(
+        "/api/v1/admin/assets/publish",
+        headers={"Authorization": "Bearer admin-secret"},
+        data={"metadata": json.dumps({"name": "legacy", "category": "其他", "width": 4, "height": 3})},
+        files={
+            "original": ("x.png", original, "image/png"),
+            "processed": ("x.png", _real_image_bytes(), "image/png"),
+            "thumbnail": ("x.webp", _real_image_bytes("WEBP", (2, 2)), "image/webp"),
+        },
+    )
+    assert legacy.status_code == 201, legacy.text
+    asset_id = legacy.json()["id"]
+    cutout = client.post(
+        "/api/v1/submissions",
+        headers=_submission_headers(client),
+        data={"metadata": json.dumps({"name": "retry-cutout", "mode": "cutout", "idempotency_key": "legacy-cutout"})},
+        files={"original": ("x.png", original, "image/png")},
+    )
+    node = client.post(
+        "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "registration-secret"},
+        json={"name": "legacy-worker", "platform": "linux"},
+    ).json()
+    node_headers = {"Authorization": f"Bearer {node['token']}"}
+    task = client.post("/api/v1/processing-nodes/poll", headers=node_headers).json()["task"]
+    completed = client.post(
+        f"/api/v1/processing-tasks/{task['id']}/complete",
+        headers=node_headers,
+        data={"metadata": json.dumps({"width": 4, "height": 3, "dominant_color": "#f05028"})},
+        files={
+            "processed": ("x.png", _real_image_bytes(), "image/png"),
+            "thumbnail": ("x.webp", _real_image_bytes("WEBP", (2, 2)), "image/webp"),
+        },
+    )
+    assert completed.status_code == 201 and completed.json()["duplicate"] is True
+    cutout_status = client.get(
+        f"/api/v1/submissions/{cutout.json()['submission_id']}",
+        headers={"Authorization": f"Bearer {cutout.json()['status_token']}"},
+    )
+    assert cutout_status.json()["status"] == "approved"
+
+    review = client.post(
+        "/api/v1/submissions",
+        headers=_submission_headers(client),
+        data={"metadata": json.dumps({"name": "retry-review", "mode": "review", "idempotency_key": "legacy-review"})},
+        files={"original": ("x.png", original, "image/png")},
+    )
+    assert review.status_code == 201
+    assert review.json()["status"] == "approved"
+    assert asset_id in [
+        asset["id"]
+        for asset in client.get("/api/v1/assets", headers={"Authorization": "Bearer editor-secret"}).json()["assets"]
+    ]
+    assert client.get(
+        f"/api/v1/assets/{asset_id}/original",
+        headers={"Authorization": "Bearer editor-secret"},
+    ).status_code == 200
+
+
+def test_processing_result_requires_real_images_and_matching_dimensions(tmp_path: Path) -> None:
     settings = CloudSettings(
         library_root=tmp_path,
         editor_token="editor-secret",
@@ -68,9 +350,56 @@ def test_processing_node_heartbeat_refreshes_liveness_without_claiming_task(tmp_
     )
     client = TestClient(create_app(settings))
     administrator = {"Authorization": "Bearer admin-secret"}
+    node = client.post(
+        "/api/v1/admin/processing-nodes/pair",
+        headers=administrator,
+        json={"name": "result-worker", "platform": "linux"},
+    ).json()
+    node_headers = {"Authorization": f"Bearer {node['token']}"}
+    task = client.post(
+        "/api/v1/admin/processing-tasks",
+        headers=administrator,
+        data={"metadata": json.dumps({"name": "result", "needs_review": True})},
+        files={"original": ("x.png", b"source", "image/png")},
+    ).json()
+    task_id = task["id"]
+    client.post("/api/v1/processing-nodes/poll", headers=node_headers)
+    corrupt = client.post(
+        f"/api/v1/processing-tasks/{task_id}/complete",
+        headers=node_headers,
+        data={"metadata": json.dumps({"width": 4, "height": 3, "dominant_color": "#f05028"})},
+        files={
+            "processed": ("x.png", b"not-png", "image/png"),
+            "thumbnail": ("x.webp", _real_image_bytes("WEBP", (2, 2)), "image/webp"),
+        },
+    )
+    assert corrupt.status_code == 415
+    mismatch = client.post(
+        f"/api/v1/processing-tasks/{task_id}/complete",
+        headers=node_headers,
+        data={"metadata": json.dumps({"width": 5, "height": 3, "dominant_color": "#f05028"})},
+        files={
+            "processed": ("x.png", _real_image_bytes(size=(4, 3)), "image/png"),
+            "thumbnail": ("x.webp", _real_image_bytes("WEBP", (2, 2)), "image/webp"),
+        },
+    )
+    assert mismatch.status_code == 422
+
+
+def test_processing_node_heartbeat_refreshes_liveness_without_claiming_task(tmp_path: Path) -> None:
+    settings = CloudSettings(
+        library_root=tmp_path,
+        editor_token="editor-secret",
+        admin_token="admin-secret",
+        allowed_origins=(),
+        processing_registration_token="registration-secret",
+    )
+    client = TestClient(create_app(settings))
+    administrator = {"Authorization": "Bearer admin-secret"}
 
     registered = client.post(
         "/api/v1/processing-nodes/register",
+        headers={"X-Qingshe-Processing-Registration-Token": "registration-secret"},
         json={"name": "这台 Mac", "platform": "macos"},
     )
     assert registered.status_code == 201, registered.text
@@ -123,6 +452,35 @@ def test_browser_login_grants_an_http_only_admin_session(tmp_path: Path) -> None
 
     dashboard = client.get("/api/v1/admin/processing-dashboard")
     assert dashboard.status_code == 200, dashboard.text
+
+    logged_out = client.post("/api/v1/auth/logout")
+    assert logged_out.status_code == 200, logged_out.text
+    assert "qingshe_admin_session=" in logged_out.headers["set-cookie"]
+    assert client.get("/api/v1/admin/processing-dashboard").status_code == 403
+
+
+def test_browser_login_rate_limit_returns_retry_after(tmp_path: Path) -> None:
+    settings = CloudSettings(
+        library_root=tmp_path,
+        editor_token="editor-secret",
+        admin_token="admin-secret",
+        allowed_origins=(),
+        admin_username="admin-user",
+        admin_password_salt=base64.urlsafe_b64encode(b"test-session-salt").decode("ascii"),
+        admin_password_hash=base64.urlsafe_b64encode(b"not-the-password").decode("ascii"),
+        admin_session_secret="session-secret",
+    )
+    client = TestClient(create_app(settings), base_url="https://assets.xiduoduo.top")
+
+    for _ in range(5):
+        assert client.post(
+            "/api/v1/auth/login", json={"username": "admin-user", "password": "wrong"}
+        ).status_code == 401
+    limited = client.post(
+        "/api/v1/auth/login", json={"username": "admin-user", "password": "wrong"}
+    )
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) >= 1
 
 
 def test_download_limit_queues_short_bursts_instead_of_rejecting_them(tmp_path: Path) -> None:
@@ -230,6 +588,8 @@ def test_publish_and_read_asset_when_tokens_are_valid(tmp_path: Path) -> None:
     assert changed_catalog.headers["x-catalog-revision"] == "3"
     assert changed_catalog.headers["etag"] != catalog.headers["etag"]
     assert client.get("/api/v1/assets").status_code == 401
+    assert client.get("/api/v1/assets", params={"access_token": "admin-secret"}).status_code == 401
+    assert client.get("/api/v1/assets", params={"access_token": "editor-secret"}).status_code == 200
 
 
 def test_editor_search_finds_assets_with_two_character_query(tmp_path: Path) -> None:
@@ -315,8 +675,8 @@ def test_remote_processing_node_can_claim_and_complete_cloud_task(tmp_path: Path
         headers=node_headers,
         data={"metadata": json.dumps({"width": 320, "height": 240, "dominant_color": "#ffffff"})},
         files={
-            "processed": ("processed.png", b"transparent-image", "image/png"),
-            "thumbnail": ("thumbnail.webp", b"thumbnail-image", "image/webp"),
+            "processed": ("processed.png", _real_image_bytes(size=(320, 240)), "image/png"),
+            "thumbnail": ("thumbnail.webp", _real_image_bytes("WEBP", (2, 2)), "image/webp"),
         },
     )
     assert completed.status_code == 201, completed.text
@@ -435,8 +795,8 @@ def test_extension_run_upload_is_idempotent_and_tracks_processing_completion(
             )
         },
         files={
-            "processed": ("processed.png", b"transparent-image", "image/png"),
-            "thumbnail": ("thumbnail.webp", b"thumbnail-image", "image/webp"),
+            "processed": ("processed.png", _real_image_bytes(size=(320, 240)), "image/png"),
+            "thumbnail": ("thumbnail.webp", _real_image_bytes("WEBP", (2, 2)), "image/webp"),
         },
     )
     assert completed.status_code == 201, completed.text
@@ -758,6 +1118,10 @@ def test_factory_loads_environment_settings(tmp_path: Path, monkeypatch) -> None
     monkeypatch.setenv("QINGSHE_ASSET_LIBRARY", str(tmp_path))
     monkeypatch.setenv("QINGSHE_EDITOR_TOKEN", "editor-from-env")
     monkeypatch.setenv("QINGSHE_ADMIN_TOKEN", "admin-from-env")
+    monkeypatch.setenv("QINGSHE_ADMIN_USERNAME", "admin-user")
+    monkeypatch.setenv("QINGSHE_ADMIN_PASSWORD_SALT", "c2FsdA==")
+    monkeypatch.setenv("QINGSHE_ADMIN_PASSWORD_HASH", "aGFzaA==")
+    monkeypatch.setenv("QINGSHE_ADMIN_SESSION_SECRET", "session-from-env")
     monkeypatch.setenv("QINGSHE_ALLOWED_ORIGINS", "http://localhost:4173, http://tauri.localhost")
 
     settings = load_settings()

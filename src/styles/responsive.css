@@ -5,7 +5,7 @@
   }
 }
 
-@media (max-width: 1279px) {
+@media (max-width: 1179px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -90,9 +90,15 @@
     width: 44px;
     height: 44px;
   }
+
+  .submission-dialog__field input,
+  .submission-dialog__field select,
+  .submission-dialog__mode label {
+    min-height: 44px;
+  }
 }
 
-@media (pointer: coarse) and (max-width: 1279px) {
+@media (pointer: coarse) and (max-width: 1179px) {
   :root {
     --status-height: calc(56px + env(safe-area-inset-bottom, 0px));
   }
@@ -255,6 +261,22 @@
     overflow-x: auto;
   }
 
+  .submission-dialog__backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .submission-dialog {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--radius-menu) var(--radius-menu) 0 0;
+  }
+
+  .submission-dialog__file-row {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
   .asset-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -307,7 +329,7 @@
   }
 }
 
-@media (pointer: coarse) and (max-width: 1279px) {
+@media (pointer: coarse) and (max-width: 1179px) {
   .side-panel {
     height: min(
       76dvh,

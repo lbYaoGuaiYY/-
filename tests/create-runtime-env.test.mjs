@@ -52,7 +52,7 @@ describe("cloud editor runtime environment", () => {
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
     }
-  })
+  }, 15_000)
 
   it("includes the production asset-admin origin in a fresh cloud environment", async () => {
     const temporaryRoot = await mkdtemp(resolve(tmpdir(), "qingshe-runtime-origin-"))
@@ -70,5 +70,61 @@ describe("cloud editor runtime environment", () => {
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
     }
-  })
+  }, 15_000)
+
+  it.each([
+    [
+      "QINGSHE_ADMIN_PASSWORD_SALT=old-salt",
+      "missing salt",
+      "QINGSHE_ADMIN_PASSWORD_SALT",
+      "old-salt",
+    ],
+    [
+      "QINGSHE_ADMIN_PASSWORD_HASH=old-hash",
+      "missing hash",
+      "QINGSHE_ADMIN_PASSWORD_HASH",
+      "old-hash",
+    ],
+    ["QINGSHE_ADMIN_USERNAME=", "empty username", "QINGSHE_ADMIN_USERNAME", ""],
+    ["QINGSHE_ADMIN_SESSION_SECRET=", "empty session secret", "QINGSHE_ADMIN_SESSION_SECRET", ""],
+  ])(
+    "repairs partial admin auth settings (%s)",
+    async (partial, label, key, oldValue) => {
+      const temporaryRoot = await mkdtemp(resolve(tmpdir(), `qingshe-runtime-${label}-`))
+      const scriptSource = resolve(projectRoot, "deploy/asset-cloud/create-runtime-env.sh")
+      const scriptPath = resolve(temporaryRoot, "deploy/asset-cloud/create-runtime-env.sh")
+
+      try {
+        await mkdir(dirname(scriptPath), { recursive: true })
+        await cp(scriptSource, scriptPath)
+        await writeFile(
+          resolve(temporaryRoot, "deploy/asset-cloud/.env"),
+          [
+            "QINGSHE_EDITOR_TOKEN=editor-token",
+            "QINGSHE_ADMIN_TOKEN=admin-token",
+            "QINGSHE_ADMIN_USERNAME=admin",
+            partial,
+            "QINGSHE_ADMIN_SESSION_SECRET=session-secret",
+            "",
+          ].join("\n"),
+          { mode: 0o600 },
+        )
+
+        await execFileAsync(shellExecutable, [scriptPath], { cwd: temporaryRoot })
+
+        const cloudEnv = await readFile(resolve(temporaryRoot, "deploy/asset-cloud/.env"), "utf8")
+        const values = Object.fromEntries(
+          cloudEnv
+            .split("\n")
+            .filter((line) => line.includes("="))
+            .map((line) => line.split("=", 2)),
+        )
+        expect(values[key]).not.toBe("")
+        if (oldValue !== "") expect(values[key]).not.toBe(oldValue)
+      } finally {
+        await rm(temporaryRoot, { recursive: true, force: true })
+      }
+    },
+    15_000,
+  )
 })

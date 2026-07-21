@@ -1,4 +1,5 @@
 import json
+import os
 from io import BytesIO
 from pathlib import Path
 from threading import Event
@@ -65,7 +66,8 @@ def test_processor_persists_an_enrollment_token_outside_the_app_bundle(tmp_path)
     save_processor_configuration(config_path, configuration)
 
     assert load_processor_configuration(config_path) == configuration
-    assert config_path.stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert config_path.stat().st_mode & 0o077 == 0
 
 
 def test_processor_reads_the_material_panel_client_identity(tmp_path) -> None:
@@ -103,6 +105,30 @@ def test_processing_agent_reports_ready_and_can_stop_between_polls(monkeypatch) 
     assert statuses == [("ready", "已连接，正在等待抠图任务")]
 
 
+def test_processing_agent_reports_failed_task_after_local_error(monkeypatch) -> None:
+    stopped = Event()
+    calls: list[str] = []
+
+    def fake_request_bytes(_base_url, path, _token, **_kwargs) -> bytes:
+        calls.append(path)
+        if path == "/processing-nodes/poll":
+            return b'{"task":{"id":"task-1","name":"bad"}}'
+        if path == "/processing-tasks/task-1/original":
+            raise RuntimeError("decode failed")
+        if path == "/processing-tasks/task-1/fail":
+            stopped.set()
+            return b'{"ok":true}'
+        raise AssertionError(path)
+
+    monkeypatch.setattr("tools.asset_admin.processing_agent.request_bytes", fake_request_bytes)
+    monkeypatch.setattr(
+        "tools.asset_admin.processing_agent._heartbeat_loop",
+        lambda *_args: None,
+    )
+    run_agent("https://assets.xiduoduo.top/api/v1", "node-token", stop_event=stopped)
+    assert "/processing-tasks/task-1/fail" in calls
+
+
 def test_processor_panel_uses_plain_language_status_labels() -> None:
     from tools.asset_admin.processing_agent_app import button_text_color, status_presentation
 
@@ -138,6 +164,9 @@ def test_register_processor_node_posts_name_and_platform(monkeypatch) -> None:
         captured["url"] = request.full_url
         captured["method"] = request.get_method()
         captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["registration_token"] = request.get_header(
+            "X-qingshe-processing-registration-token"
+        )
         return FakeResponse()
 
     monkeypatch.setattr(
@@ -148,11 +177,13 @@ def test_register_processor_node_posts_name_and_platform(monkeypatch) -> None:
         "https://assets.xiduoduo.top/api/v1",
         name="这台 Mac",
         platform_name="macos",
+        registration_token="registration-secret",
     )
 
     assert configuration.token == "auto-token"
     assert captured["url"] == "https://assets.xiduoduo.top/api/v1/processing-nodes/register"
     assert captured["method"] == "POST"
+    assert captured["registration_token"] == "registration-secret"
     assert captured["body"] == {"name": "这台 Mac", "platform": "macos"}
 
 

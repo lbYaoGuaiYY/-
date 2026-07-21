@@ -12,6 +12,9 @@ services:
       QINGSHE_ALLOWED_ORIGINS: ${QINGSHE_ALLOWED_ORIGINS}
       QINGSHE_ASSET_LIBRARY: /data
       QINGSHE_EDITOR_TOKEN: ${QINGSHE_EDITOR_TOKEN}
+      QINGSHE_SUBMISSION_TOKEN: ${QINGSHE_SUBMISSION_TOKEN}
+      QINGSHE_TRUSTED_PROXY_IPS: ${QINGSHE_TRUSTED_PROXY_IPS:-}
+      QINGSHE_PROCESSING_REGISTRATION_TOKEN: ${QINGSHE_PROCESSING_REGISTRATION_TOKEN}
     restart: unless-stopped
     cpus: "0.75"
     mem_limit: 512m
@@ -34,6 +37,9 @@ services:
         max-size: 10m
     volumes:
       - ./data:/data
+    networks:
+      qingshe_internal:
+        ipv4_address: 172.30.232.2
 
   caddy:
     image: caddy:2.10.2-alpine
@@ -57,7 +63,17 @@ services:
       - /srv/xiduoduo-site:/srv/xiduoduo-site:ro
       - caddy_config:/config
       - caddy_data:/data
+    networks:
+      qingshe_internal:
+        ipv4_address: 172.30.232.3
 
 volumes:
   caddy_config:
   caddy_data:
+
+networks:
+  qingshe_internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.232.0/28

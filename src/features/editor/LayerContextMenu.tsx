@@ -40,13 +40,39 @@ export function LayerContextMenu({
   const editable = editableOverride ?? (layer.visible && !layer.locked)
 
   useEffect(() => {
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
     menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus()
     function handlePointerDown(event: PointerEvent): void {
       if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
       onClose()
     }
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") onClose()
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
+      const items = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)") ??
+          [],
+      )
+      if (items.length === 0) return
+      event.preventDefault()
+      if (event.key === "Home") {
+        items[0]?.focus()
+        return
+      }
+      if (event.key === "End") {
+        items.at(-1)?.focus()
+        return
+      }
+      const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+      const direction = event.key === "ArrowDown" ? 1 : -1
+      const nextIndex =
+        currentIndex < 0 ? 0 : (currentIndex + direction + items.length) % items.length
+      items[nextIndex]?.focus()
     }
     document.addEventListener("pointerdown", handlePointerDown)
     document.addEventListener("keydown", handleKeyDown)
@@ -59,6 +85,7 @@ export function LayerContextMenu({
       window.removeEventListener("blur", onClose)
       window.removeEventListener("resize", onClose)
       window.removeEventListener("scroll", onClose, true)
+      if (previousFocus?.isConnected) previousFocus.focus()
     }
   }, [onClose])
 

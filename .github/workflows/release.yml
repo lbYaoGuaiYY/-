@@ -1,0 +1,326 @@
+name: qingshe-release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QINGSHE_BUILD_REVISION: ${{ github.sha }}
+  CI: true
+
+jobs:
+  validation:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: quality
+            os: ubuntu-latest
+            kind: quality
+          - name: Windows NSIS
+            os: windows-latest
+            kind: windows
+          - name: macOS unsigned app + dmg
+            os: macos-latest
+            kind: macos
+          - name: iOS simulator
+            os: macos-latest
+            kind: ios-simulator
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check release source and version
+        run: node scripts/check-product-boundaries.mjs
+
+      - name: Check tag matches release manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/release-manifest.mjs --check-tag
+
+      - name: Quality gates
+        if: matrix.kind == 'quality'
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm check
+          pnpm build
+          pnpm asset-panel:build
+          pnpm processor:web:build
+          node scripts/check-product-boundaries.mjs --artifacts
+          node scripts/verify-release-artifacts.mjs --kind quality
+
+      - name: Setup Rust
+        if: matrix.kind != 'quality'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.kind == 'ios-simulator' && 'aarch64-apple-ios-sim' || '' }}
+
+      - name: Build Windows NSIS installer
+        if: matrix.kind == 'windows'
+        run: pnpm app:windows:build
+
+      - name: Build macOS app and dmg
+        if: matrix.kind == 'macos'
+        run: pnpm app:mac:build
+
+      - name: Build unsigned iOS simulator app
+        if: matrix.kind == 'ios-simulator'
+        env:
+          QINGSHE_ARTIFACT_ARCH: aarch64-sim
+        run: pnpm app:ios:build
+
+      - name: Verify Windows installer
+        if: matrix.kind == 'windows'
+        run: node scripts/verify-release-artifacts.mjs --kind windows
+
+      - name: Verify macOS app and DMG boundary
+        if: matrix.kind == 'macos'
+        run: node scripts/verify-release-artifacts.mjs --kind macos
+
+      - name: Verify iOS simulator output
+        if: matrix.kind == 'ios-simulator'
+        run: node scripts/verify-release-artifacts.mjs --kind ios
+
+      - name: Upload web surfaces and extension artifact
+        if: matrix.kind == 'quality'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingshe-surfaces-${{ github.sha }}
+          path: |
+            dist/**
+            dist-asset-admin/**
+            dist-processor/**
+            browser-extension/dist/**
+          if-no-files-found: error
+
+      - name: Upload unsigned Windows validation artifact
+        if: matrix.kind == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingshe-windows-unsigned-${{ github.sha }}
+          path: dist-app/**
+          if-no-files-found: error
+
+      - name: Upload unsigned macOS validation artifact
+        if: matrix.kind == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingshe-macos-unsigned-validation-${{ github.sha }}
+          path: dist-app/unsigned/**
+          if-no-files-found: error
+
+      - name: Upload unsigned iOS simulator artifact
+        if: matrix.kind == 'ios-simulator'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingshe-ios-simulator-unsigned-${{ github.sha }}
+          path: dist-app/**
+          if-no-files-found: error
+
+  macos-signing:
+    name: macOS signed validation
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    environment:
+      name: release-signing
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check release source and version
+        run: node scripts/check-product-boundaries.mjs
+
+      - name: Check tag matches release manifest
+        run: node scripts/release-manifest.mjs --check-tag
+
+      - name: Prepare official Tauri macOS signing environment
+        id: prepare_mac_signing
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          # Contents of the downloaded App Store Connect .p8 key. This step
+          # writes it to a runner-local file for Tauri.
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          signing_identity="${APPLE_SIGNING_IDENTITY:-}"
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            certificate_path="$RUNNER_TEMP/qingshe-signing.p12"
+            keychain_path="$RUNNER_TEMP/qingshe-build.keychain-db"
+            printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+            security default-keychain -s "$keychain_path"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+            security set-keychain-settings -t 3600 -u "$keychain_path"
+            security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+            signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+            test -n "$signing_identity"
+          fi
+          if [ -n "$signing_identity" ]; then
+            echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+          fi
+          notarization_present=false
+          if [ -n "${APPLE_API_ISSUER:-}" ] && [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_PRIVATE_KEY:-}" ]; then
+            api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s' "$APPLE_API_PRIVATE_KEY" > "$api_key_path"
+            chmod 600 "$api_key_path"
+            echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+            notarization_present=true
+          elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            notarization_present=true
+          fi
+          test "$signing_identity" != "-"
+          if [ -n "$signing_identity" ]; then
+            echo "identity_present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "identity_present=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "notarization_present=$notarization_present" >> "$GITHUB_OUTPUT"
+
+      - name: Build macOS app and dmg with release credentials
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm app:mac:build
+
+      - name: Verify macOS signed or non-publishable status
+        env:
+          IDENTITY_PRESENT: ${{ steps.prepare_mac_signing.outputs.identity_present }}
+          NOTARIZATION_PRESENT: ${{ steps.prepare_mac_signing.outputs.notarization_present }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises"
+
+          const expectedPublishable =
+            process.env.IDENTITY_PRESENT === "true" &&
+            process.env.NOTARIZATION_PRESENT === "true"
+          const buildInfoPath = expectedPublishable
+            ? "dist-app/build-info.json"
+            : "dist-app/unsigned/build-info.json"
+          const info = JSON.parse(await readFile(buildInfoPath, "utf8"))
+          if (Boolean(info.publishable) !== expectedPublishable) {
+            throw new Error(`Unexpected macOS publishable status in ${buildInfoPath}`)
+          }
+          if (expectedPublishable && info.signing !== "signed-and-notarized") {
+            throw new Error(`Expected signed-and-notarized macOS output, got ${info.signing}`)
+          }
+          if (!expectedPublishable && !["unsigned", "signed-not-notarized"].includes(info.signing)) {
+            throw new Error(`Unexpected non-publishable macOS output, got ${info.signing}`)
+          }
+          console.log(`macOS validation status: ${info.signing}; publishable=${info.publishable}`)
+          NODE
+
+      - name: Verify macOS app and DMG boundary
+        run: node scripts/verify-release-artifacts.mjs --kind macos
+
+      - name: Upload signed macOS validation artifact
+        if: >-
+          steps.prepare_mac_signing.outputs.identity_present == 'true' &&
+          steps.prepare_mac_signing.outputs.notarization_present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingshe-macos-signed-validation-${{ github.sha }}
+          path: dist-app/**
+          if-no-files-found: error
+
+      - name: Upload non-publishable macOS validation artifact
+        if: >-
+          steps.prepare_mac_signing.outputs.identity_present != 'true' ||
+          steps.prepare_mac_signing.outputs.notarization_present != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingshe-macos-nonpublishable-validation-${{ github.sha }}
+          path: dist-app/unsigned/**
+          if-no-files-found: error
+
+  aggregate-validation:
+    name: Aggregate validation artifacts
+    if: needs.validation.result == 'success'
+    needs: validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download all validated artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Verify aggregate critical files
+        run: node scripts/verify-release-artifacts.mjs --kind aggregate --root release-artifacts
+
+      - name: Upload aggregate validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # This intentionally contains unsigned simulator/validation builds.
+          # It must never be promoted as a publishable release bundle.
+          name: qingshe-validation-${{ github.sha }}
+          path: release-artifacts/**
+          if-no-files-found: error
