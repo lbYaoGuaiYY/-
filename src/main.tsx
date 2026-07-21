@@ -8,6 +8,7 @@ import {
   createProjectId,
   ProjectIdSchema,
 } from "./features/projects/project-format"
+import { AppErrorBoundary } from "./shared/AppErrorBoundary"
 import "./styles/tokens.css"
 import "./styles/layout.css"
 import "./styles/components.css"
@@ -33,7 +34,11 @@ if (rootElement === null) {
 const pathname = window.location.pathname.replace(/\/+$/, "")
 const workspace = resolveWorkspace(pathname)
 
-createRoot(rootElement).render(<StrictMode>{workspace}</StrictMode>)
+createRoot(rootElement).render(
+  <StrictMode>
+    <AppErrorBoundary>{workspace}</AppErrorBoundary>
+  </StrictMode>,
+)
 
 function resolveWorkspace(pathname: string) {
   if (pathname === "/projects") return <ProjectHome />

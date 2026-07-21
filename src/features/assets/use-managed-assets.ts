@@ -39,6 +39,7 @@ export type ManagedAssetsOptions = {
 
 const DEFAULT_QUERY = { search: "", category: "" } as const satisfies ManagedAssetQuery
 const cloudAssetCache = new CloudAssetCache()
+export const ASSET_SEARCH_DEBOUNCE_MS = 250
 
 export function useManagedAssets(
   query: ManagedAssetQuery = DEFAULT_QUERY,
@@ -50,8 +51,10 @@ export function useManagedAssets(
   const [hasMore, setHasMore] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [debouncedSearch, setDebouncedSearch] = useState(query.search)
   const catalogRevisionRef = useRef<string | null>(null)
   const activeQuery = useRef("")
+  const requestGenerationRef = useRef(0)
   const activeFilter = useRef("")
   const cachedObjectUrls = useRef<ServiceAssetObjectUrlCache>(new Map())
   const activeObjectUrlKeys = useRef(new Set<string>())
@@ -79,11 +82,22 @@ export function useManagedAssets(
       .catch(() => refresh())
   }, [refresh])
 
-  const filterKey = `${query.search}\u0000${query.category}`
+  useEffect(() => {
+    if (query.search === debouncedSearch) return
+    const timer = window.setTimeout(
+      () => setDebouncedSearch(query.search),
+      ASSET_SEARCH_DEBOUNCE_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [debouncedSearch, query.search])
+
+  const filterKey = `${debouncedSearch}\u0000${query.category}`
   const queryKey = `${filterKey}\u0000${revision}`
   activeQuery.current = queryKey
 
   useEffect(() => {
+    const requestQuery = queryKey
+    const requestGeneration = ++requestGenerationRef.current
     if (!enabled) {
       revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
       activeObjectUrlKeys.current.clear()
@@ -96,8 +110,9 @@ export function useManagedAssets(
     const filterChanged = activeFilter.current !== filterKey
     activeFilter.current = filterKey
     let active = true
-    const requestQuery = queryKey
     const fallbackUrls: string[] = []
+    // A fresh first-page request supersedes any in-flight pagination request.
+    setIsLoadingMore(false)
     if (filterChanged) {
       revokeUnusedServiceAssetObjectUrls(cachedObjectUrls.current, new Set())
       activeObjectUrlKeys.current.clear()
@@ -109,16 +124,21 @@ export function useManagedAssets(
     void (async () => {
       try {
         const page = await listServiceAssetPage({
-          search: query.search,
+          search: debouncedSearch,
           category: query.category,
           status: "ready",
           needsReview: false,
           limit: ASSET_PAGE_SIZE,
           offset: 0,
         })
-        await cloudAssetCache.saveCatalog(page.assets)
-        const cachedProcessed = await cloudAssetCache.readProcessed(page.assets)
-        if (!active || activeQuery.current !== requestQuery) return
+        await saveCatalogBestEffort(page.assets)
+        const cachedProcessed = await readProcessedBestEffort(page.assets)
+        if (
+          !active ||
+          requestGeneration !== requestGenerationRef.current ||
+          activeQuery.current !== requestQuery
+        )
+          return
         const nextAssets = createServiceLibraryAssets(
           page.assets,
           cachedProcessed,
@@ -137,19 +157,30 @@ export function useManagedAssets(
         if (!(error instanceof Error)) throw error
         try {
           const cached = await cloudAssetCache.listCatalog({
-            search: query.search,
+            search: debouncedSearch,
             category: query.category,
             limit: ASSET_PAGE_SIZE,
             offset: 0,
           })
-          const cachedProcessed = await cloudAssetCache.readProcessed(cached.assets)
+          const cachedProcessed = await readProcessedBestEffort(cached.assets)
+          if (
+            !active ||
+            requestGeneration !== requestGenerationRef.current ||
+            activeQuery.current !== requestQuery
+          )
+            return
           const offlineAssets = createOfflineServiceLibraryAssets(
             cached.assets,
             cachedProcessed,
             cachedObjectUrls.current,
           )
           if (offlineAssets.length > 0) {
-            if (!active || activeQuery.current !== requestQuery) return
+            if (
+              !active ||
+              requestGeneration !== requestGenerationRef.current ||
+              activeQuery.current !== requestQuery
+            )
+              return
             const nextKeys = new Set(
               cached.assets
                 .filter((asset) => cachedProcessed.has(asset.id))
@@ -166,8 +197,13 @@ export function useManagedAssets(
             return
           }
           const legacy = await new ManagedAssetStore().list()
-          if (!active || activeQuery.current !== requestQuery) return
-          const normalizedSearch = query.search.toLocaleLowerCase("zh-CN")
+          if (
+            !active ||
+            requestGeneration !== requestGenerationRef.current ||
+            activeQuery.current !== requestQuery
+          )
+            return
+          const normalizedSearch = debouncedSearch.toLocaleLowerCase("zh-CN")
           const filtered = legacy.filter((record) => {
             if (query.category !== "" && record.category !== query.category) return false
             return `${record.name} ${record.category}`
@@ -185,7 +221,12 @@ export function useManagedAssets(
           setStatus(filtered.length === 0 ? "error" : "ready")
         } catch (fallbackError) {
           if (!(fallbackError instanceof Error)) throw fallbackError
-          if (active) setStatus("error")
+          if (
+            active &&
+            requestGeneration === requestGenerationRef.current &&
+            activeQuery.current === requestQuery
+          )
+            setStatus("error")
         }
       }
     })()
@@ -195,26 +236,31 @@ export function useManagedAssets(
         URL.revokeObjectURL(src)
       })
     }
-  }, [enabled, filterKey, query.category, query.search, queryKey])
+  }, [debouncedSearch, enabled, filterKey, query.category, queryKey])
 
   const loadMore = useCallback(() => {
     if (!enabled || !hasMore || isLoadingMore || status !== "ready") return
     const requestQuery = queryKey
+    const requestGeneration = requestGenerationRef.current
     const offset = assets.length
     setIsLoadingMore(true)
     void (async () => {
       try {
         const page = await listServiceAssetPage({
-          search: query.search,
+          search: debouncedSearch,
           category: query.category,
           status: "ready",
           needsReview: false,
           limit: ASSET_PAGE_SIZE,
           offset,
         })
-        await cloudAssetCache.saveCatalog(page.assets)
-        const cachedProcessed = await cloudAssetCache.readProcessed(page.assets)
-        if (activeQuery.current !== requestQuery) return
+        await saveCatalogBestEffort(page.assets)
+        const cachedProcessed = await readProcessedBestEffort(page.assets)
+        if (
+          requestGeneration !== requestGenerationRef.current ||
+          activeQuery.current !== requestQuery
+        )
+          return
         const nextAssets = createServiceLibraryAssets(
           page.assets,
           cachedProcessed,
@@ -231,9 +277,17 @@ export function useManagedAssets(
         setHasMore(page.hasMore)
       } catch (error) {
         if (!(error instanceof Error)) throw error
-        if (activeQuery.current === requestQuery) setStatus("error")
+        if (
+          requestGeneration === requestGenerationRef.current &&
+          activeQuery.current === requestQuery
+        )
+          setStatus("error")
       } finally {
-        if (activeQuery.current === requestQuery) setIsLoadingMore(false)
+        if (
+          requestGeneration === requestGenerationRef.current &&
+          activeQuery.current === requestQuery
+        )
+          setIsLoadingMore(false)
       }
     })()
   }, [
@@ -242,7 +296,7 @@ export function useManagedAssets(
     hasMore,
     isLoadingMore,
     query.category,
-    query.search,
+    debouncedSearch,
     queryKey,
     status,
   ])
@@ -268,6 +322,27 @@ export function useManagedAssets(
     [enabled, refreshIfCatalogChanged],
   )
   return { assets, hasMore, isLoadingMore, loadMore, refresh, status }
+}
+
+async function saveCatalogBestEffort(
+  assets: Parameters<typeof cloudAssetCache.saveCatalog>[0],
+): Promise<void> {
+  try {
+    await cloudAssetCache.saveCatalog(assets)
+  } catch {
+    // The online catalog remains authoritative; cache persistence is optional.
+  }
+}
+
+async function readProcessedBestEffort(
+  assets: Parameters<typeof cloudAssetCache.readProcessed>[0],
+): Promise<ReadonlyMap<string, Blob>> {
+  try {
+    return await cloudAssetCache.readProcessed(assets)
+  } catch {
+    // A corrupt/unavailable cache must not hide online assets.
+    return new Map()
+  }
 }
 
 function createServiceLibraryAssets(

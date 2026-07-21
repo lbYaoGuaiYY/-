@@ -21,11 +21,13 @@ import {
 } from "@phosphor-icons/react"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
-
 import extensionManifest from "../browser-extension/manifest.json" with { type: "json" }
 import releaseManifest from "../config/release-manifest.json" with { type: "json" }
 import floralAsset from "./features/assets/media/burgundy-autumn-floral.png"
 import { QINGSHE_BUILD_INFO } from "./platform/build-info"
+import { AppErrorBoundary } from "./shared/AppErrorBoundary"
+import "./styles/tokens.css"
+import "./styles/components.css"
 import "./styles/product.css"
 
 type ManualSection = {
@@ -657,4 +659,9 @@ function ProductPage() {
 }
 
 const root = document.getElementById("product-root")
-if (root !== null) createRoot(root).render(<ProductPage />)
+if (root !== null)
+  createRoot(root).render(
+    <AppErrorBoundary>
+      <ProductPage />
+    </AppErrorBoundary>,
+  )

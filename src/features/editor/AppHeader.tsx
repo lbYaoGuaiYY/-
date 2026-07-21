@@ -202,6 +202,6 @@ function projectStatusLabel(status: ProjectSessionStatus): string {
     case "reload_required":
       return "请刷新后继续保存"
     case "restore_failed":
-      return "恢复失败"
+      return "恢复失败，自动保存已暂停"
   }
 }

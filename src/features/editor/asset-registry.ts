@@ -56,7 +56,11 @@ export class AssetRegistry {
           blob: await ky.get(asset.source.processedUrl, { retry: 0 }).blob(),
         }
         if (asset.source.serviceAsset !== null && asset.source.serviceAsset !== undefined) {
-          await cloudAssetCache.saveProcessed(asset.source.serviceAsset, localAsset.blob)
+          try {
+            await cloudAssetCache.saveProcessed(asset.source.serviceAsset, localAsset.blob)
+          } catch {
+            // Persisting the cache is optional; adding the downloaded asset is not.
+          }
         }
         return this.registerLocalAsset(localAsset)
       }

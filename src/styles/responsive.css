@@ -69,6 +69,7 @@
   .primary-button,
   .search-field,
   .numeric-input,
+  .asset-panel__search-control,
   .asset-panel__category-filter {
     min-height: 44px;
   }
@@ -85,10 +86,22 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .asset-panel__search-clear {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
   .layer-drag-handle,
   .layer-state-button {
     width: 44px;
     height: 44px;
+  }
+
+  .layer-row {
+    grid-template-columns: 44px 44px minmax(0, 1fr) auto auto;
+    min-height: 52px;
   }
 
   .submission-dialog__field input,
@@ -170,9 +183,11 @@
 }
 
 @media (min-width: 700px) and (max-width: 899px) {
-  .app-header .desktop-only,
+  .app-header .desktop-only {
+    display: none;
+  }
+
   .brand-name,
-  .document-name-input,
   .project-durability-warning,
   .header-actions .primary-button span {
     position: absolute;
@@ -183,6 +198,12 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+}
+
+@media (pointer: fine) and (min-width: 700px) and (max-width: 1179px) {
+  .tablet-panel-toggle {
+    display: inline-flex;
   }
 }
 

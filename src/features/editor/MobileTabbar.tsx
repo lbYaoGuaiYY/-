@@ -83,12 +83,13 @@ function MobileTab({
   readonly label: string
   readonly onClick: () => void
 }) {
+  const isPanelToggle = icon === "assets" || icon === "layers" || icon === "properties"
   return (
     <button
       className={`icon-button${icon === "delete" ? " danger-button" : ""}`}
       type="button"
       aria-label={accessibleLabel}
-      aria-pressed={active}
+      {...(isPanelToggle ? { "aria-pressed": active } : {})}
       disabled={disabled}
       onClick={onClick}
     >

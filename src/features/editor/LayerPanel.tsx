@@ -268,7 +268,7 @@ function SortableLayerRow({
       <button
         className="layer-select"
         type="button"
-        aria-current={selected ? "true" : undefined}
+        aria-pressed={selected}
         onClick={(event) =>
           onSelect(layer.id, touchMultiSelect || event.shiftKey || event.ctrlKey || event.metaKey)
         }

@@ -455,6 +455,8 @@ export function App({ projectId }: AppProps) {
               onAlign={(mode) => controller?.alignSelection(mode)}
               onDistribute={(mode) => controller?.distributeSelection(mode)}
               onToggleAssets={panels.toggleAssets}
+              onToggleLayers={() => panels.toggleRightPanel("layers")}
+              onToggleProperties={() => panels.toggleRightPanel("properties")}
               onMoveLayer={(direction) => controller?.moveSelection(direction)}
               onDelete={() => controller?.deleteSelection()}
             />
@@ -491,6 +493,14 @@ export function App({ projectId }: AppProps) {
                 aria-orientation="horizontal"
                 aria-label="调整属性与图层面板高度"
                 aria-valuemin={MIN_RIGHT_PANEL_SECTION_HEIGHT}
+                aria-valuemax={Math.max(
+                  MIN_RIGHT_PANEL_SECTION_HEIGHT,
+                  Math.round(
+                    (asideRef.current?.getBoundingClientRect().height ?? inspectorHeight * 2) -
+                      PANEL_RESIZER_HEIGHT -
+                      MIN_RIGHT_PANEL_SECTION_HEIGHT,
+                  ),
+                )}
                 aria-valuenow={Math.round(inspectorHeight)}
                 tabIndex={0}
                 onPointerDown={handleResizerPointerDown}

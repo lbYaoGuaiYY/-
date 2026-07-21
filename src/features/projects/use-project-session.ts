@@ -79,8 +79,10 @@ export function useProjectSession(
 
     async function restore(result: LoadProjectResult): Promise<void> {
       if (cancelled) return
+      let safeToAutosave = result.kind === "empty"
       if (result.kind === "loaded") {
         const restored = await activeController.restoreProject(result.snapshot)
+        safeToAutosave = restored
         if (!cancelled && !restored) setStatus({ kind: "restore_failed" })
       } else if (result.kind === "blocked") setStatus({ kind: "storage_blocked" })
       else if (result.kind === "reload_required") setStatus({ kind: "reload_required" })
@@ -89,7 +91,9 @@ export function useProjectSession(
       }
       if (!cancelled) {
         activeController.finishInitialization()
-        attachAutosave()
+        // Never overwrite a stored project after a failed/blocked restore.
+        // Autosave resumes only after a clean load (or for a genuinely empty project).
+        if (safeToAutosave) attachAutosave()
       }
     }
 
@@ -101,7 +105,6 @@ export function useProjectSession(
         if (!cancelled) {
           setStatus({ kind: "restore_failed" })
           activeController.finishInitialization()
-          attachAutosave()
         }
       }
     }

@@ -12,6 +12,8 @@ import {
   ArrowsOutLineVertical,
   ArrowUp,
   SidebarSimple,
+  SlidersHorizontal,
+  Stack,
   Trash,
 } from "@phosphor-icons/react"
 
@@ -27,6 +29,8 @@ export type EditorToolbarProps = {
   readonly onDistribute: (mode: DistributionMode) => void
   readonly onMoveLayer: (direction: LayerDirection) => void
   readonly onToggleAssets: () => void
+  readonly onToggleLayers: () => void
+  readonly onToggleProperties: () => void
 }
 
 export function EditorToolbar({
@@ -39,6 +43,8 @@ export function EditorToolbar({
   onDistribute,
   onMoveLayer,
   onToggleAssets,
+  onToggleLayers,
+  onToggleProperties,
 }: EditorToolbarProps) {
   return (
     <nav className="context-toolbar" aria-label="画布工具">
@@ -51,6 +57,24 @@ export function EditorToolbar({
           onClick={onToggleAssets}
         >
           <SidebarSimple size={17} aria-hidden="true" />
+        </button>
+        <button
+          className="icon-button tablet-panel-toggle"
+          type="button"
+          aria-label="图层面板"
+          title="图层面板"
+          onClick={onToggleLayers}
+        >
+          <Stack size={17} aria-hidden="true" />
+        </button>
+        <button
+          className="icon-button tablet-panel-toggle"
+          type="button"
+          aria-label="属性面板"
+          title="属性面板"
+          onClick={onToggleProperties}
+        >
+          <SlidersHorizontal size={17} aria-hidden="true" />
         </button>
         <span className="toolbar-label">层级</span>
         <button

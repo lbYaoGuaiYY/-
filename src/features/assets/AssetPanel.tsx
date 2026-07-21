@@ -1,4 +1,4 @@
-import { ArrowClockwise, FilePlus, HardDrive, MagnifyingGlass } from "@phosphor-icons/react"
+import { ArrowClockwise, FilePlus, HardDrive, MagnifyingGlass, X } from "@phosphor-icons/react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useEffect, useRef, useState } from "react"
 import type { LibraryAsset } from "./asset-library"
@@ -166,18 +166,32 @@ export function AssetPanel({
       ) : (
         <div className="asset-panel__library-view">
           <div className="asset-panel__filters">
-            <label className="asset-panel__search">
-              <span className="asset-panel__search-label">搜索素材</span>
+            <div className="asset-panel__search">
+              <label className="asset-panel__search-label" htmlFor="asset-panel-search-input">
+                搜索素材
+              </label>
               <span className="asset-panel__search-control">
                 <MagnifyingGlass aria-hidden="true" size={16} />
                 <input
+                  id="asset-panel-search-input"
                   type="search"
                   value={query}
                   placeholder="名称/编号/标签"
                   onChange={(event) => onQueryChange(event.currentTarget.value)}
                 />
+                {query.length > 0 && (
+                  <button
+                    className="asset-panel__search-clear"
+                    type="button"
+                    aria-label="清空素材搜索"
+                    title="清空搜索"
+                    onClick={() => onQueryChange("")}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
               </span>
-            </label>
+            </div>
             <label className="sr-only" htmlFor="asset-category-filter">
               素材分类
             </label>
@@ -205,7 +219,7 @@ export function AssetPanel({
             </select>
           </div>
 
-          <div className="asset-panel__content">
+          <div className="asset-panel__content" aria-busy={status === "loading"}>
             {status === "error" && (
               <p className="asset-panel__notice notice-error" role="status">
                 云端素材服务暂时不可用，已显示内置素材。
@@ -251,14 +265,34 @@ export function AssetPanel({
                   </button>
                 )}
               </div>
+            ) : status === "loading" ? (
+              <div className="asset-panel__loading" role="status" aria-live="polite">
+                <ArrowClockwise
+                  className="asset-panel__loading-icon"
+                  size={22}
+                  aria-hidden="true"
+                />
+                <strong>正在读取素材库</strong>
+                <span>云端较慢时会自动使用本地缓存</span>
+              </div>
             ) : (
-              <p className="asset-panel__empty" role="status">
-                {status === "loading"
-                  ? "正在读取素材库…"
-                  : query.trim() === "" && category === ""
-                    ? "暂无可用素材"
-                    : "没有符合条件的素材"}
-              </p>
+              <div className="asset-panel__empty" role="status">
+                <strong>
+                  {query.trim() === "" && category === "" ? "暂无可用素材" : "没有符合条件的素材"}
+                </strong>
+                {(query.trim() !== "" || category !== "") && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => {
+                      onQueryChange("")
+                      onCategoryChange("")
+                    }}
+                  >
+                    清除筛选
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

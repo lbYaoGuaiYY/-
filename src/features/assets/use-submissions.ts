@@ -16,6 +16,8 @@ import {
 } from "./submission-store"
 
 export const SUBMISSION_POLL_INTERVAL_MS = 3000
+export const SUBMISSION_POLL_CONCURRENCY = 6
+export const SUBMISSION_MAX_PENDING = 100
 
 const STATUS_ORDER: Record<SubmissionStatus, number> = {
   queued: 0,
@@ -32,6 +34,36 @@ export function mergeSubmissionStatus(
 ): SubmissionStatus {
   if (current === "approved" || current === "failed") return current
   return STATUS_ORDER[next] >= STATUS_ORDER[current] ? next : current
+}
+
+/**
+ * Run async work with a fixed number of workers. A poll cycle uses this rather
+ * than Promise.all so a large persisted queue cannot open one request per row.
+ */
+export async function runWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return
+  const requestedConcurrency = Number.isFinite(concurrency) ? Math.floor(concurrency) : items.length
+  const workerCount = Math.max(1, Math.min(requestedConcurrency, items.length))
+  let nextIndex = 0
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex++
+        if (index >= items.length) return
+        await worker(items[index] as T, index)
+      }
+    }),
+  )
+}
+
+function statusReadErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim() !== "") return error.message
+  if (typeof error === "string" && error.trim() !== "") return error
+  return "无法刷新投稿状态"
 }
 
 export type NewSubmissionInput = {
@@ -121,15 +153,16 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
       pollController = new AbortController()
       const controller = pollController
       const request = (async (): Promise<void> => {
-        const pending = submissionsRef.current.filter(
-          (submission) =>
-            submission.status !== "approved" &&
-            submission.status !== "failed" &&
-            submission.statusToken !== "",
-        )
-        // Serialize status reads so a manual refresh cannot race the interval
-        // and so each response is merged against the latest state.
-        for (const submission of pending) {
+        const pending = submissionsRef.current
+          .filter(
+            (submission) =>
+              submission.status !== "approved" &&
+              submission.status !== "failed" &&
+              submission.statusToken !== "",
+          )
+          .slice(0, SUBMISSION_MAX_PENDING)
+
+        await runWithConcurrency(pending, SUBMISSION_POLL_CONCURRENCY, async (submission) => {
           if (!active || controller.signal.aborted) return
           try {
             const next = await getSubmissionStatus(
@@ -138,6 +171,7 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
               { signal: controller.signal },
             )
             if (!active || controller.signal.aborted) return
+            const checkedAt = Date.now()
             const currentItem = submissionsRef.current.find(
               (item) => item.submissionId === submission.submissionId,
             )
@@ -148,13 +182,15 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
             updateSubmissions((current) =>
               current.map((item) => {
                 if (item.submissionId !== submission.submissionId) return item
-                return scrubTerminalStatusToken({
+                const updated = {
                   ...item,
                   status: mergedStatus,
-                  ...(next.error === undefined ? {} : { error: next.error }),
+                  lastChecked: checkedAt,
+                  error: next.error ?? null,
                   ...(next.asset_id === undefined ? {} : { assetId: next.asset_id }),
                   ...(next.status_token === undefined ? {} : { statusToken: next.status_token }),
-                })
+                }
+                return scrubTerminalStatusToken(updated)
               }),
             )
             if (
@@ -164,11 +200,21 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
               approvedNotifiedRef.current.add(submission.submissionId)
               approvedCallbackRef.current?.()
             }
-          } catch {
+          } catch (error) {
             if (controller.signal.aborted) return
-            // A transient status read failure should not erase the persisted submission.
+            const checkedAt = Date.now()
+            const message = statusReadErrorMessage(error)
+            // Keep the last known status/token, but make a transient read error
+            // visible and persist the time at which it was observed.
+            updateSubmissions((current) =>
+              current.map((item) => {
+                if (item.submissionId !== submission.submissionId) return item
+                const updated = Object.assign({}, item, { lastChecked: checkedAt, error: message })
+                return scrubTerminalStatusToken(updated)
+              }),
+            )
           }
-        }
+        })
       })()
       pollInFlight = request
       request.then(
