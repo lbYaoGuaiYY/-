@@ -46,4 +46,13 @@ describe("release workflow credential boundary", () => {
     expect(signing).not.toMatch(/name:\s+[^\n]*nonpublishable[^\n]*release/i)
     expect(signing).toContain("Verify macOS signed or non-publishable status")
   })
+
+  it("forces non-interactive pnpm behavior inside the Xcode build phase", async () => {
+    const xcodeScript = await readFile(
+      resolve(process.cwd(), "scripts/xcode-ios-rust-build.sh"),
+      "utf8",
+    )
+
+    expect(xcodeScript).toContain('export CI="${CI:-true}"')
+  })
 })

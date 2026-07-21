@@ -4,6 +4,10 @@ set -eu
 repoRoot="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 export PATH="$repoRoot/scripts:/opt/homebrew/bin:/usr/local/bin:$HOME/.volta/bin:$PATH"
 export QINGSHE_IOS_MIN_VERSION="${QINGSHE_IOS_MIN_VERSION:-15.0}"
+# Xcode build phases do not reliably preserve the outer GitHub Actions CI
+# variable. pnpm otherwise tries to ask before refreshing node_modules and
+# aborts because the Xcode phase has no TTY.
+export CI="${CI:-true}"
 
 run_tauri_xcode_script() {
   if command -v pnpm >/dev/null 2>&1; then
