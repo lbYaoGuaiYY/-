@@ -224,7 +224,9 @@ export class FabricRuntime {
   }
 
   beginSelectionPinch(): boolean {
-    const object = this.canvas.getActiveObject()
+    const selected = this.editableSelection()
+    if (selected.length !== 1) return false
+    const object = selected[0]
     if (!(object instanceof FabricImage)) return false
     this.touchSelectionPinch = {
       object,
@@ -236,7 +238,15 @@ export class FabricRuntime {
 
   previewSelectionPinch(scaleRatio: number): boolean {
     const pinch = this.touchSelectionPinch
-    if (pinch === null || !Number.isFinite(scaleRatio) || scaleRatio <= 0) return false
+    if (
+      pinch === null ||
+      !this.isEditableObject(pinch.object) ||
+      !Number.isFinite(scaleRatio) ||
+      scaleRatio <= 0
+    ) {
+      if (pinch !== null && !this.isEditableObject(pinch.object)) this.touchSelectionPinch = null
+      return false
+    }
     const scale = Math.max(0.01, scaleRatio)
     pinch.object.set({ scaleX: pinch.scaleX * scale, scaleY: pinch.scaleY * scale })
     pinch.object.setCoords()
@@ -249,6 +259,7 @@ export class FabricRuntime {
     this.touchSelectionPinch = null
     return (
       pinch !== null &&
+      this.isEditableObject(pinch.object) &&
       (pinch.object.scaleX !== pinch.scaleX || pinch.object.scaleY !== pinch.scaleY)
     )
   }
@@ -296,7 +307,7 @@ export class FabricRuntime {
   }
 
   deleteSelection(): boolean {
-    const objects = this.canvas.getActiveObjects()
+    const objects = this.editableSelection()
     if (objects.length === 0) return false
     for (const object of objects) {
       if (object instanceof FabricImage) disposeFabricPerspective(object)
@@ -308,11 +319,13 @@ export class FabricRuntime {
   }
 
   moveSelection(direction: LayerDirection): boolean {
-    return moveFabricSelection(this.canvas, direction)
+    const selected = this.editableSelection()
+    if (selected.length === 0) return false
+    return moveFabricSelection(this.canvas, direction, selected, this.fixedLayerObjects())
   }
 
   alignSelection(mode: AlignmentMode): boolean {
-    const objects = this.canvas.getActiveObjects()
+    const objects = this.editableSelection()
     if (objects.length < 2) return false
     return this.applySelectionLayout(
       objects,
@@ -324,7 +337,7 @@ export class FabricRuntime {
   }
 
   distributeSelection(mode: DistributionMode): boolean {
-    const objects = this.canvas.getActiveObjects()
+    const objects = this.editableSelection()
     if (objects.length < 3) return false
     return this.applySelectionLayout(
       objects,
@@ -336,6 +349,16 @@ export class FabricRuntime {
   }
 
   reorderLayers(order: readonly LayerId[]): boolean {
+    const current = this.canvas.getObjects()
+    if (
+      order.length !== current.length ||
+      current.some(
+        (object, index) =>
+          this.isLockedObject(object) && this.objectIds.get(object) !== order[index],
+      )
+    ) {
+      return false
+    }
     return reorderFabricLayers(this.canvas, this.layerObjects, order)
   }
 
@@ -349,7 +372,7 @@ export class FabricRuntime {
 
   toggleSelectionFlip(axis: FlipAxis): boolean {
     let changed = false
-    for (const object of this.canvas.getActiveObjects()) {
+    for (const object of this.editableSelection()) {
       if (!(object instanceof FabricImage)) continue
       object.set(axis === "horizontal" ? { flipX: !object.flipX } : { flipY: !object.flipY })
       object.setCoords()
@@ -364,8 +387,11 @@ export class FabricRuntime {
   }
 
   private applySelectionTransform(transform: Partial<LayerTransform>, preview: boolean): boolean {
-    const object = this.canvas.getActiveObject()
-    if (object === undefined) return false
+    const selected = this.editableSelection()
+    const activeObject = this.canvas.getActiveObject()
+    if (selected.length === 0 || activeObject === undefined) return false
+    const object = selected.length === 1 ? selected[0] : activeObject
+    if (object === undefined || (selected.length === 1 && object !== activeObject)) return false
     const { perspectiveX, x, y, ...fabricTransform } = transform
     object.set(fabricTransform)
     if (x !== undefined) object.set("left", x)
@@ -380,8 +406,10 @@ export class FabricRuntime {
   }
 
   nudgeSelection(deltaX: number, deltaY: number): boolean {
+    const selected = this.editableSelection()
     const object = this.canvas.getActiveObject()
-    if (object === undefined) return false
+    if (selected.length === 0 || object === undefined) return false
+    if (selected.length === 1 && selected[0] !== object) return false
     const center = object.getCenterPoint()
     object.set({ left: center.x + deltaX, top: center.y + deltaY })
     object.setCoords()
@@ -438,6 +466,37 @@ export class FabricRuntime {
       return
     }
     this.canvas.setActiveObject(new ActiveSelection([...objects], { canvas: this.canvas }))
+  }
+
+  private editableSelection(): FabricObject[] {
+    const selected = this.canvas.getActiveObjects()
+    const editable = selected.filter((object) => this.isEditableObject(object))
+    if (editable.length !== selected.length) {
+      this.setActiveObjects(editable)
+      this.canvas.requestRenderAll()
+    }
+    return editable
+  }
+
+  private fixedLayerObjects(): ReadonlySet<FabricObject> {
+    return new Set(this.canvas.getObjects().filter((object) => this.isLockedObject(object)))
+  }
+
+  private isLockedObject(object: FabricObject): boolean {
+    for (const [id, candidate] of this.layerObjects) {
+      if (candidate !== object) continue
+      return this.layerMeta.get(id)?.locked === true
+    }
+    return false
+  }
+
+  private isEditableObject(object: FabricObject): boolean {
+    for (const [id, candidate] of this.layerObjects) {
+      if (candidate !== object) continue
+      const meta = this.layerMeta.get(id)
+      return meta?.visible === true && meta.locked === false
+    }
+    return false
   }
 
   private constrainMovingObject(target: FabricObject): void {

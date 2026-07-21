@@ -169,7 +169,8 @@ export class EditorController {
     this.emit()
   }
 
-  async importBackground(file: File): Promise<void> {
+  async importBackground(file: File): Promise<boolean> {
+    let loaded = false
     await this.runBusy(async () => {
       const result = await importRuntimeBackground(this.runtime, this.assets, file)
       if (result.kind === "invalid") this.setError(imageResultMessage(result.reason))
@@ -181,8 +182,10 @@ export class EditorController {
           backgroundAssetId: result.assetId,
         })
         this.updateZoomState(this.runtime.fitDisplay())
+        loaded = true
       }
     })
+    return loaded
   }
 
   async addBuiltInAsset(asset: DemoAsset, center: ClientPoint | null = null): Promise<void> {

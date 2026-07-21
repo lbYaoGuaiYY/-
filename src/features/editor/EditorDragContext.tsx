@@ -35,7 +35,7 @@ export type EditorDragContextProps = {
     asset: LibraryAsset,
     center: { readonly x: number; readonly y: number },
   ) => void
-  readonly onRequestBackground: () => void
+  readonly onRequestBackground: (asset: LibraryAsset) => void
 }
 
 export function EditorDragContext({
@@ -66,7 +66,7 @@ export function EditorDragContext({
     setActiveAsset(null)
     if (asset === null) return
     if (!backgroundLoaded) {
-      onRequestBackground()
+      onRequestBackground(asset)
       return
     }
     const translated = event.active.rect.current.translated

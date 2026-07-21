@@ -8,8 +8,13 @@ class UnexpectedLayerDirectionError extends Error {
   readonly name = "UnexpectedLayerDirectionError"
 }
 
-export function moveFabricSelection(canvas: Canvas, direction: LayerDirection): boolean {
-  const selectedObjects = canvas.getActiveObjects()
+export function moveFabricSelection(
+  canvas: Canvas,
+  direction: LayerDirection,
+  movableObjects: readonly FabricObject[] = canvas.getActiveObjects(),
+  fixedObjects: ReadonlySet<FabricObject> = new Set(),
+): boolean {
+  const selectedObjects = movableObjects.filter((object) => !fixedObjects.has(object))
   if (selectedObjects.length === 0) return false
   const selected = new Set<FabricObject>(selectedObjects)
   const current = canvas.getObjects()
@@ -24,7 +29,8 @@ export function moveFabricSelection(canvas: Canvas, direction: LayerDirection): 
           object !== undefined &&
           following !== undefined &&
           selected.has(object) &&
-          !selected.has(following)
+          !selected.has(following) &&
+          !fixedObjects.has(following)
         ) {
           next[index] = following
           next[index + 1] = object
@@ -40,7 +46,8 @@ export function moveFabricSelection(canvas: Canvas, direction: LayerDirection): 
           object !== undefined &&
           previous !== undefined &&
           selected.has(object) &&
-          !selected.has(previous)
+          !selected.has(previous) &&
+          !fixedObjects.has(previous)
         ) {
           next[index] = previous
           next[index - 1] = object
@@ -48,16 +55,10 @@ export function moveFabricSelection(canvas: Canvas, direction: LayerDirection): 
       }
       break
     case "front":
-      next = [
-        ...current.filter((object) => !selected.has(object)),
-        ...current.filter((object) => selected.has(object)),
-      ]
+      next = moveSelectedWithinFixedSlots(current, selected, fixedObjects, false)
       break
     case "back":
-      next = [
-        ...current.filter((object) => selected.has(object)),
-        ...current.filter((object) => !selected.has(object)),
-      ]
+      next = moveSelectedWithinFixedSlots(current, selected, fixedObjects, true)
       break
     default:
       throw new UnexpectedLayerDirectionError(`Unexpected layer direction: ${String(direction)}`)
@@ -68,6 +69,27 @@ export function moveFabricSelection(canvas: Canvas, direction: LayerDirection): 
   })
   canvas.requestRenderAll()
   return true
+}
+
+function moveSelectedWithinFixedSlots(
+  current: readonly FabricObject[],
+  selected: ReadonlySet<FabricObject>,
+  fixed: ReadonlySet<FabricObject>,
+  toBack: boolean,
+): FabricObject[] {
+  const movableSlots = current.flatMap((object, index) => (fixed.has(object) ? [] : [index]))
+  const movable = current.filter((object) => !fixed.has(object))
+  const selectedMovable = movable.filter((object) => selected.has(object))
+  const unselectedMovable = movable.filter((object) => !selected.has(object))
+  const ordered = toBack
+    ? [...selectedMovable, ...unselectedMovable]
+    : [...unselectedMovable, ...selectedMovable]
+  const next = [...current]
+  movableSlots.forEach((slot, index) => {
+    const object = ordered[index]
+    if (object !== undefined) next[slot] = object
+  })
+  return next
 }
 
 export function reorderFabricLayers(

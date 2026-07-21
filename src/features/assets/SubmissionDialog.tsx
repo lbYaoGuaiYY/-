@@ -28,6 +28,7 @@ export type SubmissionDialogProps = {
   readonly open: boolean
   readonly isSubmitting: boolean
   readonly initialValues?: SubmissionDialogInitialValues
+  readonly onCancelSubmit: () => void
   readonly onClose: () => void
   readonly onSubmit: (
     file: File,
@@ -40,6 +41,7 @@ export function SubmissionDialog({
   open,
   isSubmitting,
   initialValues,
+  onCancelSubmit,
   onClose,
   onSubmit,
 }: SubmissionDialogProps) {
@@ -273,8 +275,12 @@ export function SubmissionDialog({
             </p>
           )}
           <footer className="submission-dialog__actions">
-            <button className="text-button" type="button" disabled={isSubmitting} onClick={onClose}>
-              {result === null ? "取消" : "完成"}
+            <button
+              className="text-button"
+              type="button"
+              onClick={isSubmitting ? onCancelSubmit : onClose}
+            >
+              {isSubmitting ? "取消上传" : result === null ? "取消" : "完成"}
             </button>
             {result === null && (
               <button className="primary-button" type="submit" disabled={isSubmitting}>

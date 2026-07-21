@@ -11,6 +11,7 @@ import { AssetPanel } from "./features/assets/AssetPanel"
 import { getServiceAssetId, type LibraryAsset } from "./features/assets/asset-library"
 import { useEditorAssetLibrary } from "./features/assets/use-editor-asset-library"
 import { AppHeader } from "./features/editor/AppHeader"
+import { importBackgroundThenAddAsset } from "./features/editor/background-import-flow"
 import { EditorCanvas } from "./features/editor/EditorCanvas"
 import { EditorDragContext } from "./features/editor/EditorDragContext"
 import { EditorToolbar } from "./features/editor/EditorToolbar"
@@ -89,6 +90,7 @@ export function App({ projectId }: AppProps) {
   const backgroundInputRef = useRef<HTMLInputElement>(null)
   const projectInputRef = useRef<HTMLInputElement>(null)
   const pendingBackgroundRef = useRef<File | null>(null)
+  const pendingBackgroundAssetRef = useRef<LibraryAsset | null>(null)
   const pendingAssetsRef = useRef<LibraryAsset[]>([])
   const projectSession = useProjectSession(controller, projectId)
   const projectMetadata = useProjectMetadata(projectId)
@@ -150,17 +152,33 @@ export function App({ projectId }: AppProps) {
 
   useEffect(() => () => document.body.classList.remove("is-resizing-panel"), [])
 
+  useEffect(() => {
+    const input = backgroundInputRef.current
+    if (input === null) return
+    const clearPendingAsset = () => {
+      pendingBackgroundAssetRef.current = null
+    }
+    input.addEventListener("cancel", clearPendingAsset)
+    return () => input.removeEventListener("cancel", clearPendingAsset)
+  }, [])
+
   const handleEditorReady = useCallback((nextController: EditorController | null) => {
     controllerRef.current = nextController
     setController(nextController)
     setView(nextController?.getSnapshot() ?? FALLBACK_VIEW)
     const pendingBackground = pendingBackgroundRef.current
+    const pendingBackgroundAsset = pendingBackgroundAssetRef.current
     const pendingAssets = pendingAssetsRef.current.splice(0)
     if (nextController !== null && (pendingBackground !== null || pendingAssets.length > 0)) {
       void (async () => {
         if (pendingBackground !== null) {
           pendingBackgroundRef.current = null
-          await nextController.importBackground(pendingBackground)
+          pendingBackgroundAssetRef.current = null
+          await importBackgroundThenAddAsset(
+            nextController,
+            pendingBackground,
+            pendingBackgroundAsset,
+          )
         }
         for (const asset of pendingAssets) await nextController.addLibraryAsset(asset)
       })()
@@ -228,30 +246,49 @@ export function App({ projectId }: AppProps) {
   const selectionEditable =
     selectedLayers.length > 0 && selectedLayers.every((layer) => layer.visible && !layer.locked)
 
-  function requestBackground(): void {
+  function openBackgroundPicker(pendingAsset: LibraryAsset | null): void {
+    pendingBackgroundAssetRef.current = pendingAsset
     if (!isDesktopRuntime()) {
       backgroundInputRef.current?.click()
       return
     }
     void openBackgroundImageFile()
       .then((file) => {
-        if (file === null) return
+        if (file === null) {
+          pendingBackgroundAssetRef.current = null
+          return
+        }
         const activeController = controllerRef.current
         if (activeController === null) pendingBackgroundRef.current = file
-        else void activeController.importBackground(file)
+        else {
+          const asset = pendingBackgroundAssetRef.current
+          pendingBackgroundAssetRef.current = null
+          void importBackgroundThenAddAsset(activeController, file, asset)
+        }
       })
-      .catch(() => controllerRef.current?.showError("图片读取失败，请确认文件没有损坏后重试"))
+      .catch(() => {
+        pendingBackgroundAssetRef.current = null
+        controllerRef.current?.showError("图片读取失败，请确认文件没有损坏后重试")
+      })
+  }
+  function requestBackground(): void {
+    openBackgroundPicker(null)
+  }
+  function requestBackgroundForAsset(asset: LibraryAsset): void {
+    openBackgroundPicker(asset)
   }
   function requestProjectImport(): void {
     if (!isDesktopRuntime()) {
       projectInputRef.current?.click()
       return
     }
-    void openProjectPackageFile().then((file) => {
-      const activeController = controllerRef.current
-      if (file !== null && activeController !== null)
-        void importEditableProject(file, activeController)
-    })
+    void openProjectPackageFile()
+      .then((file) => {
+        const activeController = controllerRef.current
+        if (file !== null && activeController !== null)
+          return importEditableProject(file, activeController)
+      })
+      .catch(() => controllerRef.current?.showError("项目导入失败，请确认文件可访问后重试"))
   }
   const previewSelection = useCallback(
     (transform: Parameters<EditorController["previewSelection"]>[0]): void => {
@@ -271,8 +308,12 @@ export function App({ projectId }: AppProps) {
     if (file !== null && file !== undefined) {
       const activeController = controllerRef.current
       if (activeController === null) pendingBackgroundRef.current = file
-      else void activeController.importBackground(file)
-    }
+      else {
+        const asset = pendingBackgroundAssetRef.current
+        pendingBackgroundAssetRef.current = null
+        void importBackgroundThenAddAsset(activeController, file, asset)
+      }
+    } else pendingBackgroundAssetRef.current = null
     event.currentTarget.value = ""
   }
 
@@ -280,7 +321,9 @@ export function App({ projectId }: AppProps) {
     const file = event.currentTarget.files?.item(0)
     event.currentTarget.value = ""
     if (file === null || file === undefined || controller === null) return
-    void importEditableProject(file, controller)
+    void importEditableProject(file, controller).catch(() =>
+      controller.showError("项目导入失败，请确认文件可访问后重试"),
+    )
   }
 
   async function importEditableProject(
@@ -408,7 +451,7 @@ export function App({ projectId }: AppProps) {
         canvasSize={view.document.canvasSize}
         onAssetDragStart={panels.viewport === "desktop" ? undefined : panels.closeAssets}
         onPlaceAsset={(asset, center) => void controller?.addLibraryAsset(asset, center)}
-        onRequestBackground={requestBackground}
+        onRequestBackground={requestBackgroundForAsset}
       >
         <div className={workspaceClassName}>
           {panels.viewport !== "desktop" &&

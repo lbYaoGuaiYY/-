@@ -337,6 +337,7 @@ export function AssetPanel({
           open
           {...(retrySubmission === null ? {} : { initialValues: retrySubmission })}
           isSubmitting={submissionState.isSubmitting}
+          onCancelSubmit={submissionState.cancelSubmit}
           onClose={closeSubmissionDialog}
           onSubmit={async (file, input, onProgress) => {
             const result = await submissionState.submit(file, input, onProgress)

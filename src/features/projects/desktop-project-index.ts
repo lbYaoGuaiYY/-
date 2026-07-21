@@ -1,6 +1,11 @@
 import { z } from "zod"
 
-import { readNativeCatalog, writeNativeCatalog } from "./desktop-project-files"
+import {
+  readNativeCatalogBackup,
+  readNativeCatalogPrimary,
+  restoreNativeCatalogFromBackup,
+  writeNativeCatalog,
+} from "./desktop-project-files"
 import { type ProjectId, ProjectIdSchema } from "./project-format"
 
 const NATIVE_PROJECT_INDEX_VERSION = 1 as const
@@ -18,23 +23,43 @@ const NativeProjectIndexSchema = z.object({
 export type NativeProjectEntry = z.infer<typeof NativeProjectEntrySchema>
 export type NativeProjectIndex = z.infer<typeof NativeProjectIndexSchema>
 export type NativeProjectIndexResult =
-  | { readonly kind: "loaded"; readonly index: NativeProjectIndex }
+  | {
+      readonly kind: "loaded"
+      readonly index: NativeProjectIndex
+      readonly preserveBackupOnSave?: true
+    }
   | { readonly kind: "corrupt" }
 
 export async function loadNativeProjectIndex(): Promise<NativeProjectIndexResult> {
-  const contents = await readNativeCatalog()
+  const primaryContents = await readNativeCatalogPrimary()
+  const contents = primaryContents ?? (await readNativeCatalogBackup())
   if (contents === null) return { kind: "loaded", index: emptyNativeProjectIndex() }
-  try {
-    const parsed = NativeProjectIndexSchema.safeParse(JSON.parse(contents))
-    return parsed.success ? { kind: "loaded", index: parsed.data } : { kind: "corrupt" }
-  } catch (error) {
-    if (!(error instanceof Error)) throw error
-    return { kind: "corrupt" }
+
+  const parsed = parseNativeProjectIndex(contents)
+  if (parsed !== null) {
+    if (primaryContents === null && !(await restoreCatalogBestEffort(contents))) {
+      return { kind: "loaded", index: parsed, preserveBackupOnSave: true }
+    }
+    return { kind: "loaded", index: parsed }
   }
+
+  if (primaryContents !== null) {
+    const backupContents = await readNativeCatalogBackup()
+    const backup = backupContents === null ? null : parseNativeProjectIndex(backupContents)
+    if (backup !== null && backupContents !== null) {
+      return (await restoreCatalogBestEffort(backupContents))
+        ? { kind: "loaded", index: backup }
+        : { kind: "loaded", index: backup, preserveBackupOnSave: true }
+    }
+  }
+  return { kind: "corrupt" }
 }
 
-export async function saveNativeProjectIndex(index: NativeProjectIndex): Promise<void> {
-  await writeNativeCatalog(JSON.stringify(NativeProjectIndexSchema.parse(index)))
+export async function saveNativeProjectIndex(
+  index: NativeProjectIndex,
+  options: { readonly preserveExistingBackup?: boolean } = {},
+): Promise<void> {
+  await writeNativeCatalog(JSON.stringify(NativeProjectIndexSchema.parse(index)), options)
 }
 
 export function createNativeProjectEntry(
@@ -63,4 +88,24 @@ export function findNativeProject(
 
 function emptyNativeProjectIndex(): NativeProjectIndex {
   return { schemaVersion: NATIVE_PROJECT_INDEX_VERSION, projects: [] }
+}
+
+function parseNativeProjectIndex(contents: string): NativeProjectIndex | null {
+  try {
+    const parsed = NativeProjectIndexSchema.safeParse(JSON.parse(contents))
+    return parsed.success ? parsed.data : null
+  } catch (error) {
+    if (!(error instanceof Error)) throw error
+    return null
+  }
+}
+
+async function restoreCatalogBestEffort(contents: string): Promise<boolean> {
+  try {
+    await restoreNativeCatalogFromBackup(contents)
+    return true
+  } catch {
+    // Keep serving the validated backup when the primary cannot be rebuilt yet.
+    return false
+  }
 }

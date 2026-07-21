@@ -6,6 +6,7 @@ import type { AssetCategory } from "./demo-assets"
 
 export const SUBMISSION_MAX_BYTES = 25 * 1024 * 1024
 export const SUBMISSION_ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const
+export const SUBMISSION_UPLOAD_CAPABILITY_TIMEOUT_MS = 8_000
 export const SUBMISSION_UPLOAD_TIMEOUT_MS = 30_000
 export const SUBMISSION_STATUS_TIMEOUT_MS = 8_000
 
@@ -65,15 +66,24 @@ const SubmissionSessionSchema = z.object({
 
 type UploadCapability = z.infer<typeof SubmissionSessionSchema>
 
+export type SubmissionRequestOptions = {
+  readonly signal?: AbortSignal
+}
+
 let cachedUploadCapability: UploadCapability | null = null
 let uploadCapabilityRequest: Promise<UploadCapability> | null = null
+let uploadCapabilityController: AbortController | null = null
+let uploadCapabilityWaiters = 0
 const SUBMISSION_UPLOAD_CAPABILITY_REFRESH_MS = 30_000
 
 function submissionSessionUrl(): string {
   return `${ASSET_SERVICE_CONFIG.baseUrl}/submission-sessions`
 }
 
-async function getUploadCapability(): Promise<UploadCapability> {
+async function getUploadCapability(
+  options: SubmissionRequestOptions = {},
+): Promise<UploadCapability> {
+  if (options.signal?.aborted) throw new Error("素材投稿已取消")
   const now = Date.now()
   if (
     cachedUploadCapability !== null &&
@@ -81,35 +91,73 @@ async function getUploadCapability(): Promise<UploadCapability> {
   ) {
     return cachedUploadCapability
   }
-  if (uploadCapabilityRequest !== null) return uploadCapabilityRequest
+  if (uploadCapabilityRequest !== null && uploadCapabilityController?.signal.aborted) {
+    uploadCapabilityRequest = null
+    uploadCapabilityController = null
+  }
+  if (uploadCapabilityRequest !== null) {
+    return await waitForUploadCapability(uploadCapabilityRequest, options.signal)
+  }
 
   const identity = getAssetClientIdentity()
-  uploadCapabilityRequest = fetch(submissionSessionUrl(), {
-    method: "POST",
-    headers: {
-      ...createAssetClientHeaders(identity),
-      "Content-Type": "application/json",
-    },
-    body: "{}",
+  const controller = new AbortController()
+  let timedOut = false
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+      reject(new Error("素材投稿凭证请求超时"))
+    }, SUBMISSION_UPLOAD_CAPABILITY_TIMEOUT_MS)
   })
-    .then(async (response) => {
-      const body = await response.text()
-      if (!response.ok) throw responseError(response.status, body)
-      let payload: unknown
-      try {
-        payload = JSON.parse(body)
-      } catch {
-        throw new Error("绱犳潗鎶曠鍑瘉鍝嶅簲鏍煎紡鏃犳晥")
-      }
-      const parsed = SubmissionSessionSchema.safeParse(payload)
-      if (!parsed.success) throw new Error("绱犳潗鎶曠鍑瘉鍝嶅簲鏍煎紡鏃犳晥")
-      cachedUploadCapability = parsed.data
-      return parsed.data
-    })
-    .finally(() => {
-      uploadCapabilityRequest = null
-    })
-  return uploadCapabilityRequest
+
+  const request = (async (): Promise<UploadCapability> => {
+    let response: Response
+    try {
+      const fetchRequest = fetch(submissionSessionUrl(), {
+        method: "POST",
+        headers: {
+          ...createAssetClientHeaders(identity),
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+        signal: controller.signal,
+      })
+      response = await Promise.race([fetchRequest, timeoutPromise])
+    } catch {
+      if (timedOut) throw new Error("素材投稿凭证请求超时")
+      throw new Error("素材投稿网络连接失败")
+    }
+
+    let body: string
+    try {
+      body = await Promise.race([response.text(), timeoutPromise])
+    } catch {
+      if (timedOut) throw new Error("素材投稿凭证请求超时")
+      throw new Error("素材投稿网络连接失败")
+    }
+    if (!response.ok) throw responseError(response.status, body)
+    let payload: unknown
+    try {
+      payload = JSON.parse(body)
+    } catch {
+      throw new Error("素材投稿凭证响应格式无效")
+    }
+    const parsed = SubmissionSessionSchema.safeParse(payload)
+    if (!parsed.success) throw new Error("素材投稿凭证响应格式无效")
+    cachedUploadCapability = parsed.data
+    return parsed.data
+  })()
+
+  let sharedRequest: Promise<UploadCapability>
+  sharedRequest = request.finally(() => {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle)
+    if (uploadCapabilityRequest === sharedRequest) uploadCapabilityRequest = null
+    if (uploadCapabilityController === controller) uploadCapabilityController = null
+  })
+  uploadCapabilityRequest = sharedRequest
+  uploadCapabilityController = controller
+  return await waitForUploadCapability(sharedRequest, options.signal)
 }
 
 function submissionUrl(submissionId?: string): string {
@@ -130,12 +178,53 @@ function responseError(status: number, body: string): Error {
   return new Error(`素材投稿请求失败（HTTP ${status}）${detail}`)
 }
 
+async function waitForUploadCapability(
+  request: Promise<UploadCapability>,
+  signal: AbortSignal | undefined,
+): Promise<UploadCapability> {
+  uploadCapabilityWaiters += 1
+  let released = false
+  const release = (): void => {
+    if (released) return
+    released = true
+    uploadCapabilityWaiters -= 1
+    if (uploadCapabilityWaiters === 0 && uploadCapabilityRequest === request) {
+      uploadCapabilityController?.abort()
+    }
+  }
+  if (signal?.aborted) {
+    release()
+    throw new Error("素材投稿已取消")
+  }
+
+  return await new Promise<UploadCapability>((resolve, reject) => {
+    const abortHandler = (): void => {
+      release()
+      reject(new Error("素材投稿已取消"))
+    }
+    signal?.addEventListener("abort", abortHandler, { once: true })
+    request.then(
+      (capability) => {
+        signal?.removeEventListener("abort", abortHandler)
+        release()
+        resolve(capability)
+      },
+      (error: unknown) => {
+        signal?.removeEventListener("abort", abortHandler)
+        release()
+        reject(error)
+      },
+    )
+  })
+}
+
 export async function createSubmission(
   original: File,
   metadata: Omit<SubmissionMetadata, "idempotency_key"> & { readonly idempotency_key?: string },
   onProgress?: (progress: SubmissionProgress) => void,
+  options: SubmissionRequestOptions = {},
 ): Promise<SubmissionReceipt> {
-  const capability = await getUploadCapability()
+  const capability = await getUploadCapability(options)
   const identity = getAssetClientIdentity()
 
   const idempotencyKey = metadata.idempotency_key ?? createIdempotencyKey()
@@ -163,14 +252,27 @@ export async function createSubmission(
     }
     request.responseType = "json"
     let settled = false
+    const abortFromCaller = (): void => {
+      try {
+        request.abort()
+      } catch {
+        // A browser may already have transitioned the request to DONE.
+      }
+      rejectOnce(new Error("素材投稿已取消"))
+    }
+    const cleanupCallerSignal = (): void => {
+      options.signal?.removeEventListener("abort", abortFromCaller)
+    }
     const resolveOnce = (receipt: SubmissionReceipt): void => {
       if (settled) return
       settled = true
+      cleanupCallerSignal()
       resolve(receipt)
     }
     const rejectOnce = (error: Error): void => {
       if (settled) return
       settled = true
+      cleanupCallerSignal()
       reject(error)
     }
     request.upload.addEventListener("progress", (event) => {
@@ -212,6 +314,13 @@ export async function createSubmission(
       }
       resolveOnce(parsed.data)
     })
+    if (options.signal !== undefined) {
+      if (options.signal.aborted) {
+        rejectOnce(new Error("素材投稿已取消"))
+        return
+      }
+      options.signal.addEventListener("abort", abortFromCaller, { once: true })
+    }
     request.send(form)
   })
 }

@@ -76,6 +76,7 @@ export type NewSubmissionInput = {
 export type SubmissionState = {
   readonly submissions: readonly StoredSubmission[]
   readonly isSubmitting: boolean
+  readonly cancelSubmit: () => void
   readonly refresh: () => void
   readonly submit: (
     file: File,
@@ -91,6 +92,8 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
   const approvedNotifiedRef = useRef(new Set<string>())
   const approvedCallbackRef = useRef(onApproved)
   const pollNowRef = useRef<() => void>(() => undefined)
+  const submitControllerRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
   approvedCallbackRef.current = onApproved
   submissionsRef.current = submissions
 
@@ -112,9 +115,14 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
       input: NewSubmissionInput,
       onProgress?: (progress: SubmissionProgress) => void,
     ): Promise<StoredSubmission> => {
+      submitControllerRef.current?.abort()
+      const submitController = new AbortController()
+      submitControllerRef.current = submitController
       setIsSubmitting(true)
       try {
-        const receipt = await createSubmission(file, input, onProgress)
+        const receipt = await createSubmission(file, input, onProgress, {
+          signal: submitController.signal,
+        })
         const record = scrubTerminalStatusToken({
           submissionId: receipt.submission_id,
           status: receipt.status,
@@ -137,11 +145,24 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
         }
         return record
       } finally {
-        setIsSubmitting(false)
+        if (submitControllerRef.current === submitController) {
+          submitControllerRef.current = null
+          if (mountedRef.current) setIsSubmitting(false)
+        }
       }
     },
     [updateSubmissions],
   )
+
+  const cancelSubmit = useCallback(() => submitControllerRef.current?.abort(), [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      submitControllerRef.current?.abort()
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -249,7 +270,7 @@ export function useSubmissions(onApproved?: () => void): SubmissionState {
     void pollNowRef.current()
   }, [])
 
-  return { isSubmitting, refresh, submit, submissions }
+  return { isSubmitting, cancelSubmit, refresh, submit, submissions }
 }
 
 export type { SubmissionStatus }

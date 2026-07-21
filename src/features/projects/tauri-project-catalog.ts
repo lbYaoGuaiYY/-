@@ -33,7 +33,10 @@ export class TauriProjectCatalog implements ProjectCatalog {
       const result = await loadNativeProjectIndex()
       if (result.kind === "corrupt") return { kind: "error" }
       const entry = createNativeProjectEntry(createNativeProjectId(), name, Date.now())
-      await saveNativeProjectIndex({ ...result.index, projects: [...result.index.projects, entry] })
+      await saveNativeProjectIndex(
+        { ...result.index, projects: [...result.index.projects, entry] },
+        result.preserveBackupOnSave ? { preserveExistingBackup: true } : {},
+      )
       return { kind: "saved", projectId: entry.id }
     } catch (error) {
       if (!(error instanceof Error)) throw error
@@ -48,12 +51,15 @@ export class TauriProjectCatalog implements ProjectCatalog {
         return { kind: "error" }
       }
       const updatedAt = Date.now()
-      await saveNativeProjectIndex({
-        ...result.index,
-        projects: result.index.projects.map((project) =>
-          project.id === id ? { ...project, name, updatedAt } : project,
-        ),
-      })
+      await saveNativeProjectIndex(
+        {
+          ...result.index,
+          projects: result.index.projects.map((project) =>
+            project.id === id ? { ...project, name, updatedAt } : project,
+          ),
+        },
+        result.preserveBackupOnSave ? { preserveExistingBackup: true } : {},
+      )
       return { kind: "saved", projectId: id }
     } catch (error) {
       if (!(error instanceof Error)) throw error
@@ -83,10 +89,13 @@ export class TauriProjectCatalog implements ProjectCatalog {
       if (result.kind === "corrupt" || findNativeProject(result.index, id) === undefined) {
         return { kind: "error" }
       }
-      await saveNativeProjectIndex({
-        ...result.index,
-        projects: result.index.projects.filter((project) => project.id !== id),
-      })
+      await saveNativeProjectIndex(
+        {
+          ...result.index,
+          projects: result.index.projects.filter((project) => project.id !== id),
+        },
+        result.preserveBackupOnSave ? { preserveExistingBackup: true } : {},
+      )
       await removeNativeProjectPackage(id)
       return { kind: "saved", projectId: id }
     } catch (error) {
